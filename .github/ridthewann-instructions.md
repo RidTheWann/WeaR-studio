@@ -1,4 +1,4 @@
-# copilot-instructions.md
+# ridthewann-instructions.md
 
 - [x] Project requirements clarified: WeaR Studio, C++17, Qt6, FFmpeg, CMake, cross-platform, OBS-like features.
 - [x] Scaffolded the project structure and main classes.
