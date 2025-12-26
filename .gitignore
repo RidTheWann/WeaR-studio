@@ -1,0 +1,58 @@
+# Build directories
+build/
+out/
+bin/
+*.dir/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*.cmake
+!cmake/*.cmake
+Testing/
+CPackConfig.cmake
+CPackSourceConfig.cmake
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.ncb
+*.idb
+*.pdb
+*.ilk
+*.exp
+*.aps
+
+# VS Code
+.vscode/
+.history/
+
+# Qt
+*.pro.user
+.qmake.stash
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+Makefile*
+
+# Compiled binaries and libraries
+# (Allow plugins dir, but ignore binaries inside it unless explicitly added)
+*.exe
+*.dll
+*.lib
+*.so
+*.dylib
+*.a
+
+# Exceptions for documentation or special files
+!LICENSE
+!README.md
+
+# System
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
