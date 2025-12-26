@@ -1,0 +1,13 @@
+{
+    "Keys": [
+        "wear.source.color"
+    ],
+    "MetaData": {
+        "name": "Color Source",
+        "version": "0.1",
+        "author": "WeaR-studio",
+        "description": "Generates solid color or animated color frames",
+        "type": "source",
+        "compatVersion": "0.1"
+    }
+}
