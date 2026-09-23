@@ -11,6 +11,7 @@
 #include <StreamManager.h>
 #include <EncoderManager.h>
 #include <RecordingManager.h>
+#include <VirtualCameraManager.h>
 #include <CaptureManager.h>
 #include <AudioMixer.h>
 #include <AudioCaptureSource.h>
@@ -383,6 +384,24 @@ void MainWindow::createControlsDock() {
 
     layout->addWidget(transitionGroup);
 
+    // Virtual camera output. This is intentionally a Controls action rather
+    // than a scene source because the virtual camera is an output device.
+    QGroupBox* virtualCameraGroup = new QGroupBox("Virtual Camera");
+    QVBoxLayout* virtualCameraLayout = new QVBoxLayout(virtualCameraGroup);
+
+    m_virtualCameraBtn = new QPushButton("Start Virtual Camera");
+    m_virtualCameraBtn->setMinimumHeight(36);
+    m_virtualCameraBtn->setObjectName("startVirtualCameraBtn");
+    virtualCameraLayout->addWidget(m_virtualCameraBtn);
+
+    QLabel* virtualCameraInfo = new QLabel(
+        "Windows 11 Media Foundation camera for video-call apps.",
+        virtualCameraGroup);
+    virtualCameraInfo->setWordWrap(true);
+    virtualCameraLayout->addWidget(virtualCameraInfo);
+
+    layout->addWidget(virtualCameraGroup);
+
 
     // Basic GPU filter controls
     QGroupBox* filterGroup = new QGroupBox("Video Filter");
@@ -456,6 +475,33 @@ void MainWindow::setupConnections() {
             this, &MainWindow::onTransitionTypeChanged);
     connect(m_transitionDurationSpin, &QSpinBox::valueChanged,
             this, &MainWindow::onTransitionDurationChanged);
+    connect(m_virtualCameraBtn, &QPushButton::clicked,
+            this, &MainWindow::onVirtualCameraClicked);
+    connect(&VirtualCameraManager::instance(), &VirtualCameraManager::stateChanged,
+            this, [this](bool running) {
+                if (!m_virtualCameraBtn) {
+                    return;
+                }
+                m_virtualCameraBtn->setText(
+                    running
+                        ? "Stop Virtual Camera"
+                        : "Start Virtual Camera");
+                m_virtualCameraBtn->setObjectName(
+                    running
+                        ? "stopVirtualCameraBtn"
+                        : "startVirtualCameraBtn");
+                m_virtualCameraBtn->style()->unpolish(m_virtualCameraBtn);
+                m_virtualCameraBtn->style()->polish(m_virtualCameraBtn);
+            });
+    connect(&VirtualCameraManager::instance(),
+            &VirtualCameraManager::errorOccurred,
+            this,
+            [this](const QString& error) {
+                if (m_statusLabel) {
+                    m_statusLabel->setText(
+                        QString("Virtual camera: %1").arg(error));
+                }
+            });
 
     connect(&RecordingManager::instance(), &RecordingManager::stateChanged,
             this, &MainWindow::updateRecordingState);
@@ -839,6 +885,32 @@ void MainWindow::onPauseRecordingClicked() {
         recorder.resumeRecording();
     } else if (recorder.isRecording()) {
         recorder.pauseRecording();
+    }
+}
+
+void MainWindow::onVirtualCameraClicked() {
+    auto& camera = VirtualCameraManager::instance();
+
+    if (camera.isRunning()) {
+        camera.stop();
+        return;
+    }
+
+    if (!camera.start()) {
+        const QString error = camera.lastError();
+        QMessageBox::warning(
+            this,
+            "Virtual Camera",
+            error.isEmpty()
+                ? "Failed to start the virtual camera."
+                : error);
+        return;
+    }
+
+    if (m_statusLabel) {
+        m_statusLabel->setText(
+            QString("%1 is available to video-call applications.")
+                .arg(camera.deviceName()));
     }
 }
 
