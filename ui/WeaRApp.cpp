@@ -15,16 +15,15 @@ namespace WeaR {
 WeaRApp::WeaRApp(int& argc, char** argv)
     : QApplication(argc, argv)
 {
-    // Start persistent diagnostics before initializing any managers.
-    // The logger lives outside the install directory so normal users can
-    // always write logs even when the app is installed under Program Files.
-    AppDiagnostics::initialize();
-
     // Set application metadata
     setApplicationName(displayName());
     setApplicationVersion(version());
     setOrganizationName(QStringLiteral("WeaR-studio"));
     setOrganizationDomain(QStringLiteral("wear-studio.com"));
+
+    // Start persistent diagnostics after metadata is set, so
+    // QStandardPaths resolves the per-user application directory correctly.
+    AppDiagnostics::initialize();
     
     // Setup the dark theme
     setupDarkTheme();
@@ -33,7 +32,9 @@ WeaRApp::WeaRApp(int& argc, char** argv)
     qDebug() << "WeaR Studio" << version() << "initialized";
 }
 
-WeaRApp::~WeaRApp() = default;
+WeaRApp::~WeaRApp() {
+    AppDiagnostics::shutdown();
+}
 
 void WeaRApp::setupDarkTheme() {
     // Use Fusion style for consistent cross-platform look
