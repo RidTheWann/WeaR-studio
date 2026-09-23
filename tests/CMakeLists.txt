@@ -136,7 +136,7 @@ target_compile_features(SceneManagerFallbackTest PRIVATE cxx_std_20)
 
 add_test(NAME SceneManagerFallbackTest COMMAND SceneManagerFallbackTest)
 
-    
+
 # Scene transition rendering and SceneManager integration coverage.
 add_executable(SceneTransitionTest
     SceneTransitionTest.cpp
@@ -150,7 +150,7 @@ target_link_libraries(SceneTransitionTest
 
 target_include_directories(SceneTransitionTest
     PRIVATE
-        \${CMAKE_SOURCE_DIR}/core
+        ${CMAKE_SOURCE_DIR}/core
 )
 
 target_compile_features(SceneTransitionTest PRIVATE cxx_std_20)
