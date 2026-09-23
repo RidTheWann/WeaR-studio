@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 #include <QMutexLocker>
+#include <QSettings>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -99,10 +100,60 @@ bool GlobalHotkeyManager::initialize() {
 
 #ifdef Q_OS_WIN
     if (!QCoreApplication::instance()) {
-        m_lastError = QStringLiteral("QCoreApplication is required for global hotkeys.");
+        m_lastError = QStringLiteral(
+            "QCoreApplication is required for global hotkeys.");
         return false;
     }
+
+    // Restore the user's configured chords before registration.
+    QSettings settings;
+    settings.beginGroup(QStringLiteral("Hotkeys"));
+    for (auto it = m_bindings.begin(); it != m_bindings.end(); ++it) {
+        const QString key = actionId(it.key());
+        if (settings.contains(key)) {
+            const QKeySequence sequence(
+                settings.value(key).toString());
+            it.value().sequence = sequence;
+            it.value().enabled = !sequence.isEmpty();
+        }
+    }
+    settings.endGroup();
+
     QCoreApplication::instance()->installNativeEventFilter(this);
+
+    const auto persistedBindings = m_bindings.values();
+    unregisterAllLocked();
+
+    bool registered = true;
+    for (const auto& binding : persistedBindings) {
+        if (!binding.enabled || binding.sequence.isEmpty()) {
+            continue;
+        }
+        if (!registerBindingLocked(binding)) {
+            registered = false;
+            break;
+        }
+    }
+
+    if (!registered) {
+        unregisterAllLocked();
+        m_bindings.clear();
+
+        for (const auto& binding : defaultBindings()) {
+            m_bindings.insert(binding.action, binding);
+        }
+
+        for (const auto& binding : m_bindings) {
+            if (binding.enabled && !binding.sequence.isEmpty() &&
+                !registerBindingLocked(binding)) {
+                unregisterAllLocked();
+                m_lastError = QStringLiteral(
+                    "One or more default global hotkeys could not be registered.");
+                break;
+            }
+        }
+    }
+
     m_initialized = true;
 #else
     m_lastError = QStringLiteral(
