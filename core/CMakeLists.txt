@@ -5,6 +5,8 @@
 
 # Core library sources
 set(CORE_SOURCES
+    AppDiagnostics.cpp
+    AppDiagnostics.h
     CaptureManager.cpp
     CaptureManager.h
     EncoderManager.cpp
