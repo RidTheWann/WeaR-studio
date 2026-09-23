@@ -32,8 +32,8 @@ qt_add_shaders(WeaRStudio "wear_rhi_shaders"
     PRECOMPILE
     OPTIMIZED
     FILES
-        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.vert
-        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.frag
+        ../shaders/rhi_composite.vert
+        ../shaders/rhi_composite.frag
 )
 
 target_link_libraries(WeaRStudio
