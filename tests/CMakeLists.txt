@@ -130,6 +130,10 @@ target_compile_features(SceneManagerFallbackTest PRIVATE cxx_std_20)
 
 add_test(NAME SceneManagerFallbackTest COMMAND SceneManagerFallbackTest)
 
+set_tests_properties(SceneManagerFallbackTest PROPERTIES
+    ENVIRONMENT "WEAR_COMPOSITOR=qpainter"
+)
+
 
 # Scene transition rendering and SceneManager integration coverage.
 add_executable(SceneTransitionTest
