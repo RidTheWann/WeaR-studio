@@ -299,7 +299,7 @@ void GaussianBlurFilter::resetToDefaults() {
 }
 
 VideoFrame GaussianBlurFilter::processVideo(const VideoFrame& input) {
-    const QImage source = ensureArgbPremultiplied(input);
+    const QImage source = ensureRgba(input);
     if (source.isNull()) {
         return input;
     }
@@ -352,7 +352,7 @@ VideoFrame GaussianBlurFilter::processVideo(const VideoFrame& input) {
     }
 
     VideoFrame output = input;
-    output.softwareFrame = result;
+    output.softwareFrame = result.convertToFormat(QImage::Format_ARGB32_Premultiplied);
     output.isHardwareFrame = false;
     output.hardwareFrame = nullptr;
     return output;
@@ -491,7 +491,7 @@ void ColorCorrectionFilter::resetToDefaults() {
 }
 
 VideoFrame ColorCorrectionFilter::processVideo(const VideoFrame& input) {
-    const QImage source = ensureArgbPremultiplied(input);
+    const QImage source = ensureRgba(input);
     if (source.isNull()) {
         return input;
     }
