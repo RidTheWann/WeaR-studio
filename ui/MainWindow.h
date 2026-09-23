@@ -22,6 +22,9 @@ namespace WeaR {
 class PreviewWidget;
 class AudioMixerDock;
 class ISource;
+class ChromaKeyFilter;
+class GaussianBlurFilter;
+class ColorCorrectionFilter;
 
 /**
  * @brief Main application window
@@ -55,6 +58,7 @@ private slots:
     void onStopStreaming();
     void onRecordClicked();
     void onPauseRecordingClicked();
+    void onApplyFilter();
     void onBrowseRecordingPath();
     void onSettingsClicked();
     
@@ -116,6 +120,10 @@ private:
     QPushButton* m_recordBtn = nullptr;
     QPushButton* m_pauseRecordBtn = nullptr;
     QLabel* m_recordDurationLabel = nullptr;
+
+    // Basic built-in video filter controls.
+    QComboBox* m_filterCombo = nullptr;
+    QPushButton* m_applyFilterBtn = nullptr;
     
     // Status widgets
     QLabel* m_statusLabel = nullptr;
@@ -125,6 +133,10 @@ private:
     
     // Timers
     QTimer* m_statsTimer = nullptr;
+
+    std::unique_ptr<ChromaKeyFilter> m_chromaKeyFilter;
+    std::unique_ptr<GaussianBlurFilter> m_gaussianBlurFilter;
+    std::unique_ptr<ColorCorrectionFilter> m_colorCorrectionFilter;
 };
 
 } // namespace WeaR
