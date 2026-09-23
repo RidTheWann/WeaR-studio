@@ -13,7 +13,7 @@ int main(int argc, char** argv) {
     auto& stream = WeaR::StreamManager::instance();
 
     WeaR::StreamSettings settings;
-    settings.url = QStringLiteral("rtmp://127.0.0.1:1/wear-reconnect-test");
+    settings.url = QStringLiteral("rtmp://127.0.0.1:9/wear-reconnect-test");
     settings.connectTimeout = 1;
     settings.reconnectDelay = 1;
     settings.reconnectMaxDelay = 4;
