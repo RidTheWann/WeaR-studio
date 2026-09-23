@@ -546,10 +546,20 @@ public:
         if (riid == IID_IUnknown ||
             riid == IID_IMFMediaEventGenerator ||
             riid == IID_IMFMediaSource ||
-            riid == IID_IMFMediaSourceEx ||
-            riid == IID_IMFGetService ||
-            riid == IID_IKsControl) {
+            riid == IID_IMFMediaSourceEx) {
             *ppv = static_cast<IMFMediaSourceEx*>(this);
+            AddRef();
+            return S_OK;
+        }
+
+        if (riid == IID_IMFGetService) {
+            *ppv = static_cast<IMFGetService*>(this);
+            AddRef();
+            return S_OK;
+        }
+
+        if (riid == IID_IKsControl) {
+            *ppv = static_cast<IKsControl*>(this);
             AddRef();
             return S_OK;
         }
