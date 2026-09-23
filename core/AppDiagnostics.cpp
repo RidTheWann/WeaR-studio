@@ -9,6 +9,7 @@
 #include <QMutexLocker>
 #include <QStandardPaths>
 #include <QTextStream>
+#include <QThread>
 
 #include <atomic>
 #include <cstdlib>
