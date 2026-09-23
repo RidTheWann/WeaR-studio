@@ -3,6 +3,7 @@
 #include "EncoderManager.h"
 #include "RecordingManager.h"
 #include "StreamManager.h"
+#include "GlobalHotkeyManager.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -17,18 +18,6 @@ class SceneItem;
 class SceneManager;
 class ISource;
 class IFilter;
-
-struct ProfileData {
-    StreamSettings stream;
-    EncoderSettings encoder;
-    RecordingSettings recording;
-    QSize outputResolution{1920, 1080};
-    double targetFps = 60.0;
-    bool encoderOutputEnabled = true;
-    bool recordingOutputEnabled = false;
-    QList<GlobalHotkeyBinding> hotkeys;
-    QMap<QString, QVariant> audioTrackSettings;
-};
 
 class ProjectPersistence final {
 public:
@@ -69,7 +58,7 @@ public:
         const FilterResolver& filterResolver,
         QString* error = nullptr);
 
-private:
+public:
     static QJsonObject sourceConfigToJson(
         const ISource& source,
         const SourceConfig& config);
