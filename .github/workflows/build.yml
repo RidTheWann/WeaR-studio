@@ -44,7 +44,7 @@ jobs:
         shell: pwsh
         run: |
           if (Test-Path build) { Remove-Item -Recurse -Force build }
-          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+          cmake -S . -B build -G "Visual Studio 18 2026" -A x64 `
             "-DCMAKE_PREFIX_PATH=$env:Qt6_DIR" `
             "-DFFMPEG_ROOT=$env:FFMPEG_ROOT"
 
@@ -67,6 +67,53 @@ jobs:
       - name: Run Release tests
         shell: pwsh
         run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Verify recording outputs with ffprobe
+        shell: pwsh
+        env:
+          WEAR_RECORDING_TEST_OUTPUT_DIR: ${{ github.workspace }}\\build\\recording-test-output
+        run: |
+          New-Item -ItemType Directory -Force "$env:WEAR_RECORDING_TEST_OUTPUT_DIR" | Out-Null
+          ctest --test-dir build -C Release -R RecordingManagerTest --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          foreach ($extension in @("mp4", "mkv", "flv")) {
+            $file = Join-Path $env:WEAR_RECORDING_TEST_OUTPUT_DIR "recording-sample.$extension"
+            if (-not (Test-Path $file)) {
+              throw "Recording fixture was not created: $file"
+            }
+
+            & ffprobe -v error -show_entries format=format_name,duration `
+              -show_entries stream=index,codec_type,codec_name `
+              -of json "$file" | Out-File "$file.ffprobe.json" -Encoding utf8
+
+            if ($LASTEXITCODE -ne 0) {
+              throw "ffprobe rejected recording fixture: $file"
+            }
+
+            $videoCodec = & ffprobe -v error -select_streams v:0 `
+              -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "$file"
+            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace(($videoCodec -join ""))) {
+              throw "No readable video stream found by ffprobe: $file"
+            }
+
+            $audioCodec = & ffprobe -v error -select_streams a:0 `
+              -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "$file"
+            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace(($audioCodec -join ""))) {
+              throw "No readable audio stream found by ffprobe: $file"
+            }
+
+            Write-Host "ffprobe OK: $file | video=$($videoCodec -join '') audio=$($audioCodec -join '')"
+          }
+
+      - name: Upload recording verification artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recording-verification
+          path: |
+            build/recording-test-output/*
+          if-no-files-found: ignore
 
       - name: Upload build logs
         if: always()

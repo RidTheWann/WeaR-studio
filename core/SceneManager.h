@@ -131,6 +131,16 @@ public:
      */
     [[nodiscard]] bool isEncoderOutputEnabled() const { return m_encoderOutputEnabled; }
 
+    /**
+     * @brief Enable/disable independent local recording output.
+     */
+    void setRecordingOutputEnabled(bool enabled);
+
+    /**
+     * @brief Check if local recording output is enabled.
+     */
+    [[nodiscard]] bool isRecordingOutputEnabled() const { return m_recordingOutputEnabled; }
+
     // =========================================================================
     // Scene Management
     // =========================================================================
@@ -256,6 +266,7 @@ private:
     // Render implementation
     void doRender();
     void outputToEncoder(const QImage& frame);
+    void outputToRecorder(const QImage& frame);
     void outputToPreview(const QImage& frame);
     
     // Scenes
@@ -276,6 +287,7 @@ private:
     // Output
     PreviewFrameCallback m_previewCallback;
     std::atomic<bool> m_encoderOutputEnabled{true};
+    std::atomic<bool> m_recordingOutputEnabled{false};
     
     // Frame buffer
     QImage m_lastFrame;

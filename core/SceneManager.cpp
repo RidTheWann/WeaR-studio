@@ -5,6 +5,7 @@
 
 #include "SceneManager.h"
 #include "EncoderManager.h"
+#include "RecordingManager.h"
 #include "AudioMixer.h"
 
 #include <QDebug>
@@ -88,6 +89,10 @@ void SceneManager::setPreviewCallback(PreviewFrameCallback callback) {
 
 void SceneManager::setEncoderOutputEnabled(bool enabled) {
     m_encoderOutputEnabled = enabled;
+}
+
+void SceneManager::setRecordingOutputEnabled(bool enabled) {
+    m_recordingOutputEnabled = enabled;
 }
 
 // ==============================================================================
@@ -286,16 +291,29 @@ void SceneManager::doRender() {
     // Output to preview
     outputToPreview(frame);
     
-    // Mix audio aligned with render tick
-    int sampleRate = 48000;
-    int samplesPerFrame = static_cast<int>(sampleRate / (m_targetFps > 0.0 ? m_targetFps : 60.0));
-    AudioFrame mixedAudio = AudioMixer::instance().mixTracks(samplesPerFrame);
+    const bool streamEnabled = m_encoderOutputEnabled.load();
+    const bool recordingEnabled = m_recordingOutputEnabled.load();
 
-    // Output to encoder
-    if (m_encoderOutputEnabled) {
-        outputToEncoder(frame);
-        if (!mixedAudio.samples.empty()) {
-            EncoderManager::instance().pushAudioFrame(mixedAudio);
+    // Mix audio once per render tick and fan it out to the independent
+    // streaming and recording pipelines.
+    if (streamEnabled || recordingEnabled) {
+        const int sampleRate = 48000;
+        const int samplesPerFrame = static_cast<int>(
+            sampleRate / (m_targetFps > 0.0 ? m_targetFps : 60.0));
+        AudioFrame mixedAudio = AudioMixer::instance().mixTracks(samplesPerFrame);
+
+        if (streamEnabled) {
+            outputToEncoder(frame);
+            if (!mixedAudio.samples.empty()) {
+                EncoderManager::instance().pushAudioFrame(mixedAudio);
+            }
+        }
+
+        if (recordingEnabled) {
+            outputToRecorder(frame);
+            if (!mixedAudio.samples.empty()) {
+                RecordingManager::instance().pushAudioFrame(mixedAudio);
+            }
         }
     }
     
@@ -334,6 +352,11 @@ void SceneManager::outputToEncoder(const QImage& frame) {
     EncoderManager::instance().pushFrame(frame, pts);
 }
 
+void SceneManager::outputToRecorder(const QImage& frame) {
+    if (frame.isNull()) return;
+    RecordingManager::instance().pushFrame(frame);
+}
+
 void SceneManager::outputToPreview(const QImage& frame) {
     PreviewFrameCallback callback;
     {
@@ -347,3 +370,5 @@ void SceneManager::outputToPreview(const QImage& frame) {
 }
 
 } // namespace WeaR
+
+// Recording output is intentionally separate from the streaming encoder.

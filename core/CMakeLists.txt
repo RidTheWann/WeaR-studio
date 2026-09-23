@@ -21,6 +21,8 @@ set(CORE_SOURCES
     AudioCaptureSource.h
     AudioMixer.cpp
     AudioMixer.h
+    RecordingManager.cpp
+    RecordingManager.h
     PluginManager.cpp
     PluginManager.h
 )
