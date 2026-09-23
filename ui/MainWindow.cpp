@@ -10,6 +10,7 @@
 #include <SceneManager.h>
 #include <StreamManager.h>
 #include <EncoderManager.h>
+#include <RecordingManager.h>
 #include <CaptureManager.h>
 #include <AudioMixer.h>
 #include <AudioCaptureSource.h>
@@ -27,6 +28,12 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QComboBox>
+#include <QSpinBox>
+#include <QFileDialog>
+#include <QStandardPaths>
+#include <QDir>
+#include <QFileInfo>
 #include <QPushButton>
 #include <QGroupBox>
 #include <QMessageBox>
@@ -48,8 +55,14 @@ MainWindow::MainWindow(QWidget* parent)
 }
 
 MainWindow::~MainWindow() {
-    // Stop streaming if running
+    // Finalize the independent recording file before shutting down the render loop.
+    SceneManager::instance().setRecordingOutputEnabled(false);
+    RecordingManager::instance().stopRecording();
+
+    // Stop streaming if running.
+    SceneManager::instance().setEncoderOutputEnabled(false);
     StreamManager::instance().stopStream();
+    EncoderManager::instance().stop();
     
     // Stop scene rendering
     SceneManager::instance().stopRenderLoop();
@@ -270,6 +283,64 @@ void MainWindow::createControlsDock() {
     
     layout->addWidget(streamGroup);
     
+    // Recording settings and controls
+    QGroupBox* recordingGroup = new QGroupBox("Recording");
+    QVBoxLayout* recordingLayout = new QVBoxLayout(recordingGroup);
+
+    QHBoxLayout* pathLayout = new QHBoxLayout();
+    m_recordPathEdit = new QLineEdit();
+    m_recordPathEdit->setPlaceholderText("Output file path");
+
+    const QString moviesDir =
+        QStandardPaths::writableLocation(QStandardPaths::MoviesLocation);
+    const QString defaultRecordPath =
+        QDir(moviesDir.isEmpty() ? QDir::homePath() : moviesDir)
+            .filePath("WeaR-recording.mkv");
+    m_recordPathEdit->setText(defaultRecordPath);
+
+    m_recordBrowseBtn = new QPushButton("Browse...");
+    m_recordBrowseBtn->setFixedWidth(84);
+    pathLayout->addWidget(m_recordPathEdit, 1);
+    pathLayout->addWidget(m_recordBrowseBtn);
+    recordingLayout->addLayout(pathLayout);
+
+    QHBoxLayout* formatLayout = new QHBoxLayout();
+    formatLayout->addWidget(new QLabel("Format:"));
+    m_recordFormatCombo = new QComboBox();
+    m_recordFormatCombo->addItem("MKV");
+    m_recordFormatCombo->addItem("MP4");
+    m_recordFormatCombo->addItem("FLV");
+    formatLayout->addWidget(m_recordFormatCombo, 1);
+
+    formatLayout->addWidget(new QLabel("Video bitrate:"));
+    m_recordBitrateSpin = new QSpinBox();
+    m_recordBitrateSpin->setRange(500, 100000);
+    m_recordBitrateSpin->setSingleStep(500);
+    m_recordBitrateSpin->setValue(12000);
+    m_recordBitrateSpin->setSuffix(" kbps");
+    formatLayout->addWidget(m_recordBitrateSpin);
+    recordingLayout->addLayout(formatLayout);
+
+    QHBoxLayout* recordButtonsLayout = new QHBoxLayout();
+    m_recordBtn = new QPushButton("Start Recording");
+    m_recordBtn->setObjectName("startRecordBtn");
+    m_recordBtn->setMinimumHeight(40);
+
+    m_pauseRecordBtn = new QPushButton("Pause");
+    m_pauseRecordBtn->setEnabled(false);
+    m_pauseRecordBtn->setMinimumHeight(40);
+
+    m_recordDurationLabel = new QLabel("Recording: 00:00:00");
+    m_recordDurationLabel->setMinimumWidth(125);
+    m_recordDurationLabel->setAlignment(Qt::AlignCenter);
+
+    recordButtonsLayout->addWidget(m_recordBtn, 2);
+    recordButtonsLayout->addWidget(m_pauseRecordBtn, 1);
+    recordButtonsLayout->addWidget(m_recordDurationLabel);
+    recordingLayout->addLayout(recordButtonsLayout);
+
+    layout->addWidget(recordingGroup);
+
     // Action buttons
     QGroupBox* actionsGroup = new QGroupBox("Actions");
     QVBoxLayout* actionsLayout = new QVBoxLayout(actionsGroup);
@@ -314,6 +385,19 @@ void MainWindow::setupConnections() {
         }
     });
     connect(m_settingsBtn, &QPushButton::clicked, this, &MainWindow::onSettingsClicked);
+    connect(m_recordBtn, &QPushButton::clicked, this, &MainWindow::onRecordClicked);
+    connect(m_pauseRecordBtn, &QPushButton::clicked,
+            this, &MainWindow::onPauseRecordingClicked);
+    connect(m_recordBrowseBtn, &QPushButton::clicked,
+            this, &MainWindow::onBrowseRecordingPath);
+
+    connect(&RecordingManager::instance(), &RecordingManager::stateChanged,
+            this, &MainWindow::updateRecordingState);
+    connect(&RecordingManager::instance(), &RecordingManager::recordingError,
+            this, [this](const QString& error) {
+                m_statusLabel->setText(QString("Recording error: %1").arg(error));
+                QMessageBox::warning(this, "Recording Error", error);
+            });
     
     // Stream state changes
     connect(&StreamManager::instance(), &StreamManager::stateChanged,
@@ -503,6 +587,116 @@ void MainWindow::onRemoveSource() {
     }
 }
 
+void MainWindow::onRecordClicked() {
+    auto& recorder = RecordingManager::instance();
+
+    if (recorder.isRecording() || recorder.isPaused()) {
+        recorder.stopRecording();
+        SceneManager::instance().setRecordingOutputEnabled(false);
+        return;
+    }
+
+    RecordingSettings settings;
+    settings.width = 1920;
+    settings.height = 1080;
+    settings.fpsNum = 60;
+    settings.fpsDen = 1;
+    settings.videoBitrate = m_recordBitrateSpin->value();
+    settings.maxVideoBitrate = settings.videoBitrate + settings.videoBitrate / 3;
+    settings.bufferSize = settings.videoBitrate * 2;
+    settings.crf = 18;
+    settings.qp = 18;
+    settings.encoderType = EncoderType::Auto;
+    settings.preset = EncoderPreset::Fast;
+    settings.rateControl = RateControlMode::CRF;
+    settings.keyframeInterval = 2;
+    settings.bFrames = 2;
+    settings.audioEnabled = true;
+    settings.audioSampleRate = 48000;
+    settings.audioChannels = 2;
+    settings.audioBitrate = 192;
+
+    switch (m_recordFormatCombo->currentIndex()) {
+        case 1:
+            settings.format = RecordingFormat::MP4;
+            break;
+        case 2:
+            settings.format = RecordingFormat::FLV;
+            break;
+        default:
+            settings.format = RecordingFormat::MKV;
+            break;
+    }
+
+    QString path = m_recordPathEdit->text().trimmed();
+    if (path.isEmpty()) {
+        onBrowseRecordingPath();
+        path = m_recordPathEdit->text().trimmed();
+    }
+    if (path.isEmpty()) {
+        return;
+    }
+
+    const QString expectedExt =
+        settings.format == RecordingFormat::MP4
+            ? "mp4"
+            : (settings.format == RecordingFormat::FLV ? "flv" : "mkv");
+
+    QFileInfo info(path);
+    if (info.suffix().compare(expectedExt, Qt::CaseInsensitive) != 0) {
+        const QString directory = info.path();
+        const QString base = info.completeBaseName().isEmpty()
+            ? "WeaR-recording"
+            : info.completeBaseName();
+        path = QDir(directory).filePath(base + "." + expectedExt);
+        m_recordPathEdit->setText(path);
+    }
+
+    if (!recorder.configure(settings)) {
+        return;
+    }
+
+    if (!recorder.startRecording(path)) {
+        return;
+    }
+
+    // Only the recording output is enabled. Streaming remains untouched.
+    SceneManager::instance().setRecordingOutputEnabled(true);
+}
+
+void MainWindow::onPauseRecordingClicked() {
+    auto& recorder = RecordingManager::instance();
+
+    if (recorder.isPaused()) {
+        recorder.resumeRecording();
+    } else if (recorder.isRecording()) {
+        recorder.pauseRecording();
+    }
+}
+
+void MainWindow::onBrowseRecordingPath() {
+    const QString selected = QFileDialog::getSaveFileName(
+        this,
+        "Choose recording output",
+        m_recordPathEdit ? m_recordPathEdit->text() : QString(),
+        "MKV Video (*.mkv);;MP4 Video (*.mp4);;FLV Video (*.flv);;All Files (*)");
+
+    if (selected.isEmpty()) {
+        return;
+    }
+
+    m_recordPathEdit->setText(selected);
+
+    const QString suffix = QFileInfo(selected).suffix().toLower();
+    if (suffix == "mp4") {
+        m_recordFormatCombo->setCurrentIndex(1);
+    } else if (suffix == "flv") {
+        m_recordFormatCombo->setCurrentIndex(2);
+    } else {
+        m_recordFormatCombo->setCurrentIndex(0);
+    }
+}
+
 void MainWindow::onStartStreaming() {
     QString url = m_streamUrlEdit->text().trimmed();
     QString key = m_streamKeyEdit->text().trimmed();
@@ -555,9 +749,12 @@ void MainWindow::onStartStreaming() {
 
 void MainWindow::onStopStreaming() {
     SceneManager::instance().setEncoderOutputEnabled(false);
-    EncoderManager::instance().stop();
     StreamManager::instance().stopStream();
-    m_statusLabel->setText("Stopped");
+    EncoderManager::instance().stop();
+    m_statusLabel->setText(
+        RecordingManager::instance().isRecording() || RecordingManager::instance().isPaused()
+            ? "Recording"
+            : "Stopped");
 }
 
 void MainWindow::onSettingsClicked() {
@@ -570,11 +767,67 @@ void MainWindow::onPreviewFrame(const QImage& frame) {
     m_previewWidget->updateFrame(frame);
 }
 
+void MainWindow::updateRecordingState() {
+    const RecordingState state = RecordingManager::instance().state();
+
+    switch (state) {
+        case RecordingState::Stopped:
+            m_recordBtn->setText("Start Recording");
+            m_recordBtn->setObjectName("startRecordBtn");
+            m_recordBtn->setEnabled(true);
+            m_pauseRecordBtn->setText("Pause");
+            m_pauseRecordBtn->setEnabled(false);
+            break;
+
+        case RecordingState::Recording:
+            m_recordBtn->setText("Stop Recording");
+            m_recordBtn->setObjectName("stopRecordBtn");
+            m_recordBtn->setEnabled(true);
+            m_pauseRecordBtn->setText("Pause");
+            m_pauseRecordBtn->setEnabled(true);
+            break;
+
+        case RecordingState::Paused:
+            m_recordBtn->setText("Stop Recording");
+            m_recordBtn->setObjectName("stopRecordBtn");
+            m_recordBtn->setEnabled(true);
+            m_pauseRecordBtn->setText("Resume");
+            m_pauseRecordBtn->setEnabled(true);
+            break;
+
+        case RecordingState::Error:
+            m_recordBtn->setText("Start Recording");
+            m_recordBtn->setObjectName("startRecordBtn");
+            m_recordBtn->setEnabled(true);
+            m_pauseRecordBtn->setText("Pause");
+            m_pauseRecordBtn->setEnabled(false);
+            break;
+    }
+
+    m_recordBtn->style()->unpolish(m_recordBtn);
+    m_recordBtn->style()->polish(m_recordBtn);
+}
+
 void MainWindow::updateStatistics() {
     // Render stats
     RenderStatistics renderStats = SceneManager::instance().statistics();
     m_fpsLabel->setText(QString("FPS: %1").arg(renderStats.currentFps, 0, 'f', 1));
     
+    const RecordingState recordingState = RecordingManager::instance().state();
+    if (recordingState == RecordingState::Recording ||
+        recordingState == RecordingState::Paused) {
+        const qint64 ms = RecordingManager::instance().durationMs();
+        const int seconds = static_cast<int>((ms / 1000) % 60);
+        const int minutes = static_cast<int>((ms / 60000) % 60);
+        const int hours = static_cast<int>(ms / 3600000);
+        m_recordDurationLabel->setText(QString("REC %1:%2:%3")
+            .arg(hours, 2, 10, QChar('0'))
+            .arg(minutes, 2, 10, QChar('0'))
+            .arg(seconds, 2, 10, QChar('0')));
+    } else {
+        m_recordDurationLabel->setText("Recording: 00:00:00");
+    }
+
     // Stream stats
     if (StreamManager::instance().isStreaming()) {
         StreamStatistics streamStats = StreamManager::instance().statistics();
