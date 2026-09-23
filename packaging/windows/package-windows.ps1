@@ -41,11 +41,43 @@ if (-not $windeployqt) {
     throw "windeployqt.exe was not found on PATH."
 }
 
-Write-Host "Deploying Qt runtime with windeployqt..."
-& $windeployqt.Source --release --compiler-runtime --no-translations --no-system-d3d-compiler --no-opengl-sw $exe
+$qtBinDir = Split-Path -Parent $windeployqt.Source
+
+Write-Host "Deploying Qt runtime with windeployqt from $qtBinDir..."
+& $windeployqt.Source `
+    --release `
+    --compiler-runtime `
+    --no-translations `
+    --no-system-d3d-compiler `
+    --no-opengl-sw `
+    $exe
 
 if ($LASTEXITCODE -ne 0) {
     throw "windeployqt failed with exit code $LASTEXITCODE"
+}
+
+# Ensure all Qt modules linked by WeaR-Studio are present even if
+# windeployqt does not detect a transitive/static-library dependency.
+$requiredQtDlls = @(
+    "Qt6Core.dll",
+    "Qt6Gui.dll",
+    "Qt6Widgets.dll",
+    "Qt6Network.dll",
+    "Qt6Multimedia.dll",
+    "Qt6Quick.dll",
+    "Qt6OpenGL.dll",
+    "Qt6OpenGLWidgets.dll"
+)
+
+foreach ($dllName in $requiredQtDlls) {
+    $sourceDll = Join-Path $qtBinDir $dllName
+    $destinationDll = Join-Path $stage $dllName
+
+    if (-not (Test-Path $sourceDll)) {
+        throw "Required Qt DLL was not found beside windeployqt: $sourceDll"
+    }
+
+    Copy-Item $sourceDll $destinationDll -Force
 }
 
 Write-Host "Bundling FFmpeg runtime DLLs..."
