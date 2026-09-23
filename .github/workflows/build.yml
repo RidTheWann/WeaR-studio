@@ -164,7 +164,7 @@ jobs:
         run: |
           $installer = Get-ChildItem `
             "$env:GITHUB_WORKSPACE\\build\\installer" `
-            -Filter "*.exe" `
+            -Filter "WeaR-Studio-Setup.exe" `
             -File |
             Select-Object -First 1
 
@@ -173,37 +173,64 @@ jobs:
           }
 
           $installDir = "$env:GITHUB_WORKSPACE\\clean-machine-install"
+          $installerLog = "$env:GITHUB_WORKSPACE\\installed-smoke-test.log"
+
           if (Test-Path $installDir) {
             Remove-Item -Recurse -Force $installDir
           }
 
-          & $installer.FullName `
-            /VERYSILENT `
-            /SUPPRESSMSGBOXES `
-            /NORESTART `
+          if (Test-Path $installerLog) {
+            Remove-Item -Force $installerLog
+          }
+
+          New-Item -ItemType Directory -Force $installDir | Out-Null
+
+          $arguments = @(
+            "/VERYSILENT"
+            "/SUPPRESSMSGBOXES"
+            "/NORESTART"
+            "/SP-"
+            "/LOG=$installerLog"
             "/DIR=$installDir"
-
-          if ($LASTEXITCODE -ne 0) {
-            throw "Silent installer failed with exit code $LASTEXITCODE"
-          }
-
-          $installedExe = Join-Path $installDir "WeaR-Studio.exe"
-          if (-not (Test-Path $installedExe)) {
-            throw "Installed executable was not found: $installedExe"
-          }
-
-          $env:PATH = "$installDir;$env:SystemRoot\\System32;$env:SystemRoot"
+          )
 
           $process = Start-Process `
-            -FilePath $installedExe `
-            -ArgumentList @("--smoke-test") `
-            -WorkingDirectory $installDir `
+            -FilePath $installer.FullName `
+            -ArgumentList $arguments `
+            -WorkingDirectory $installer.DirectoryName `
             -Wait `
             -PassThru `
             -NoNewWindow
 
           if ($process.ExitCode -ne 0) {
-            throw "Installed package smoke test failed with exit code $($process.ExitCode)"
+            if (Test-Path $installerLog) {
+              Get-Content $installerLog
+            }
+
+            throw "Silent installer failed with exit code $($process.ExitCode)"
+          }
+
+          $installedExe = Join-Path $installDir "WeaR-Studio.exe"
+          if (-not (Test-Path $installedExe)) {
+            if (Test-Path $installerLog) {
+              Get-Content $installerLog
+            }
+
+            throw "Installed executable was not found: $installedExe"
+          }
+
+          $env:PATH = "$installDir;$env:SystemRoot\\System32;$env:SystemRoot"
+
+          $app = Start-Process `
+            -FilePath $installedExe `
+            -ArgumentList "--smoke-test" `
+            -WorkingDirectory $installDir `
+            -Wait `
+            -PassThru `
+            -NoNewWindow
+
+          if ($app.ExitCode -ne 0) {
+            throw "Installed package smoke test failed with exit code $($app.ExitCode)"
           }
 
           Write-Host "Clean-machine installer smoke test passed."
