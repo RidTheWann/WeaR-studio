@@ -12,6 +12,8 @@
 #include <mferror.h>
 #include <mfobjects.h>
 #include <mfvirtualcamera.h>
+#include <shlwapi.h>
+#include <cwchar>
 
 #include <wrl/client.h>
 
@@ -526,14 +528,6 @@ public:
         hr = MFCreateAttributes(&m_sourceAttributes, 8);
         if (FAILED(hr)) return hr;
 
-        hr = m_sourceAttributes->SetUINT32(
-            MF_MEDIA_ENGINE_CALLBACK, 1);
-        if (FAILED(hr)) {
-            // This attribute is optional; remove it when rejected by a
-            // stricter Windows SDK/runtime.
-            m_sourceAttributes->DeleteItem(MF_MEDIA_ENGINE_CALLBACK);
-        }
-
         return S_OK;
     }
 
@@ -631,9 +625,10 @@ public:
 
         if (m_stream) {
             m_stream->shutdown();
+            m_stream->Release();
+            m_stream = nullptr;
         }
 
-        m_stream.Reset();
         m_presentation.Reset();
         m_sourceAttributes.Reset();
         return S_OK;
@@ -710,6 +705,7 @@ public:
 
 private:
     ~MediaSource() override {
+        Shutdown();
         --g_objectCount;
     }
 
