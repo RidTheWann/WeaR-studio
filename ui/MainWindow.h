@@ -129,6 +129,7 @@ private:
     QLabel* m_statusLabel = nullptr;
     QLabel* m_fpsLabel = nullptr;
     QLabel* m_bitrateLabel = nullptr;
+    QLabel* m_compositingLabel = nullptr;
     QLabel* m_durationLabel = nullptr;
     
     // Timers
