@@ -23,6 +23,11 @@ set(CORE_SOURCES
     AudioMixer.h
     RecordingManager.cpp
     RecordingManager.h
+    IRhiFilter.h
+    BuiltinRhiFilters.cpp
+    BuiltinRhiFilters.h
+    RhiCompositor.cpp
+    RhiCompositor.h
     PluginManager.cpp
     PluginManager.h
 )
@@ -42,6 +47,18 @@ add_library(core STATIC
 
 # Alias for cleaner usage
 add_library(WeaRStudio::Core ALIAS core)
+
+# ==============================================================================
+# Precompile cross-backend RHI shaders into the core static library
+# ==============================================================================
+qt_add_shaders(core "wear_rhi_shaders"
+    PREFIX "/wear/rhi"
+    PRECOMPILE
+    OPTIMIZED
+    FILES
+        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.vert
+        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.frag
+)
 
 # ==============================================================================
 # Include Directories
@@ -65,6 +82,7 @@ target_link_libraries(core
         Qt6::Multimedia
         Qt6::OpenGL
         Qt6::OpenGLWidgets
+        Qt6::GuiPrivate
 )
 
 # ==============================================================================
