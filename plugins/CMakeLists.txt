@@ -96,3 +96,54 @@ install(TARGETS example_plugin
 #     PREFIX ""
 #     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/plugins"
 # )
+
+    
+# ==============================================================================
+# Windows Webcam Source - Media Foundation
+# ==============================================================================
+if(WIN32)
+    add_library(webcam_source MODULE
+        webcam/WebcamSourcePlugin.cpp
+        webcam/WebcamSourcePlugin.h
+        webcam/WebcamSourcePlugin.json
+    )
+
+    target_link_libraries(webcam_source
+        PRIVATE
+            Qt6::Core
+            Qt6::Widgets
+            Qt6::Gui
+            core
+            mfplat
+            mfuuid
+            mfreadwrite
+            mf
+    )
+
+    target_include_directories(webcam_source
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/webcam
+            ${CMAKE_SOURCE_DIR}/core
+    )
+
+    target_compile_features(webcam_source PRIVATE cxx_std_20)
+
+    set_target_properties(webcam_source PROPERTIES
+        PREFIX ""
+        OUTPUT_NAME "WebcamSource"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/plugins"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/plugins"
+        POSITION_INDEPENDENT_CODE ON
+    )
+
+    target_compile_definitions(webcam_source
+        PRIVATE
+            WEAR_PLUGIN_EXPORTS
+            QT_PLUGIN
+    )
+
+    install(TARGETS webcam_source
+        LIBRARY DESTINATION bin/plugins
+        RUNTIME DESTINATION bin/plugins
+    )
+endif()

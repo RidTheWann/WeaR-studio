@@ -1,0 +1,13 @@
+{
+    "Keys": [
+        "wear.source.webcam"
+    ],
+    "MetaData": {
+        "name": "Webcam",
+        "version": "0.1",
+        "author": "WeaR-studio",
+        "description": "Windows Media Foundation webcam video source",
+        "type": "source",
+        "compatVersion": "0.1"
+    }
+}
