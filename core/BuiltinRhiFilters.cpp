@@ -545,7 +545,7 @@ VideoFrame ColorCorrectionFilter::processVideo(const VideoFrame& input) {
     }
 
     VideoFrame output = input;
-    output.softwareFrame = result;
+    output.softwareFrame = result.convertToFormat(QImage::Format_ARGB32_Premultiplied);
     output.isHardwareFrame = false;
     output.hardwareFrame = nullptr;
     return output;
