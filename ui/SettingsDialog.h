@@ -81,7 +81,7 @@ private:
     QComboBox* m_recordFormat = nullptr;
     QSpinBox* m_recordWidth = nullptr;
     QSpinBox* m_recordHeight = nullptr;
-    QSpinBox* m_recordFps = nullptr;
+    QDoubleSpinBox* m_recordFps = nullptr;
     QSpinBox* m_recordBitrate = nullptr;
     QSpinBox* m_recordMaxBitrate = nullptr;
     QSpinBox* m_recordBuffer = nullptr;
