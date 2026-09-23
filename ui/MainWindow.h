@@ -65,6 +65,10 @@ private slots:
     void onTransitionDurationChanged(int durationMs);
     void onBrowseRecordingPath();
     void onSettingsClicked();
+    void onSaveProfile();
+    void onLoadProfile();
+    void onSaveSceneCollection();
+    void onLoadSceneCollection();
     
     // Updates
     void onPreviewFrame(const QImage& frame);
@@ -88,6 +92,14 @@ private:
     void refreshScenesList();
     void refreshSourcesList();
     void updateStreamButton();
+    bool applyProfile(
+        const StreamSettings& stream,
+        const EncoderSettings& encoder,
+        const RecordingSettings& recording,
+        const QSize& outputResolution,
+        double targetFps,
+        bool encoderOutputEnabled,
+        bool recordingOutputEnabled);
     
     // Central widget
     PreviewWidget* m_previewWidget = nullptr;
@@ -113,14 +125,8 @@ private:
     QPushButton* m_removeSourceBtn = nullptr;
     
     // Controls dock widgets
-    QLineEdit* m_streamUrlEdit = nullptr;
-    QLineEdit* m_streamKeyEdit = nullptr;
     QPushButton* m_startStreamBtn = nullptr;
     QPushButton* m_settingsBtn = nullptr;
-    QLineEdit* m_recordPathEdit = nullptr;
-    QPushButton* m_recordBrowseBtn = nullptr;
-    QComboBox* m_recordFormatCombo = nullptr;
-    QSpinBox* m_recordBitrateSpin = nullptr;
     QPushButton* m_recordBtn = nullptr;
     QPushButton* m_pauseRecordBtn = nullptr;
     QLabel* m_recordDurationLabel = nullptr;
@@ -142,6 +148,8 @@ private:
     
     // Timers
     QTimer* m_statsTimer = nullptr;
+
+    int m_micTrackId = -1;
 
     std::unique_ptr<ChromaKeyFilter> m_chromaKeyFilter;
     std::unique_ptr<GaussianBlurFilter> m_gaussianBlurFilter;
