@@ -10,6 +10,7 @@
 #include <QElapsedTimer>
 #include <QThread>
 #include <algorithm>
+#include <atomic>
 #include <limits>
 
 // FFmpeg headers (C linkage)
@@ -23,6 +24,19 @@ extern "C" {
 
 #include <chrono>
 #include <deque>
+
+namespace {
+
+int ffmpegInterruptCallback(void* opaque) {
+    const auto* running = static_cast<const std::atomic<bool>*>(opaque);
+    if (!running) {
+        return 0;
+    }
+
+    return running->load(std::memory_order_relaxed) ? 0 : 1;
+}
+
+} // namespace
 
 namespace WeaR {
 
@@ -319,7 +333,11 @@ private:
             logAvError("Failed to allocate output context", ret);
             return false;
         }
-        
+
+        // Make all blocking FFmpeg I/O interruptible when StreamManager stops.
+        m_formatContext->interrupt_callback.callback = &ffmpegInterruptCallback;
+        m_formatContext->interrupt_callback.opaque = &m_running;
+
         // Create video stream
         m_videoStream = avformat_new_stream(m_formatContext, nullptr);
         if (!m_videoStream) {
@@ -374,9 +392,14 @@ private:
         AVDictionary* options = nullptr;
         
         // Connection timeout
-        QString timeout = QString::number(m_settings.connectTimeout * 1000000);
+        const QString timeout =
+            QString::number(m_settings.connectTimeout * 1000000);
         av_dict_set(&options, "timeout", timeout.toUtf8().constData(), 0);
-        
+
+        // Bound generic FFmpeg read/write waits as well as the connect timeout.
+        av_dict_set(&options, "rw_timeout",
+                    timeout.toUtf8().constData(), 0);
+
         // TCP buffer size
         QString bufSize = QString::number(m_settings.sendBufferSize);
         av_dict_set(&options, "buffer_size", bufSize.toUtf8().constData(), 0);
