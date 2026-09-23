@@ -100,9 +100,7 @@ public:
         const EncoderSettings& encoder,
         const RecordingSettings& recording,
         const QSize& outputResolution,
-        double targetFps,
-        bool encoderOutputEnabled,
-        bool recordingOutputEnabled);
+        double targetFps);
 
     static bool profileFromJson(
         const QJsonObject& root,
@@ -111,8 +109,6 @@ public:
         RecordingSettings& recording,
         QSize& outputResolution,
         double& targetFps,
-        bool& encoderOutputEnabled,
-        bool& recordingOutputEnabled,
         QString* error);
 };
 
