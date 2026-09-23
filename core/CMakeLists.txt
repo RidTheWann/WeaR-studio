@@ -97,25 +97,43 @@ if(WIN32)
         set(WINDOWS_SDK_DIR "C:/Program Files (x86)/Windows Kits/10")
     endif()
     
-    # Get the Windows SDK version
-    if(DEFINED CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
+    # Resolve the Windows SDK C++/WinRT header directory from the
+    # active Visual Studio toolchain/environment, with a fallback scan.
+    if(CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
         set(WINDOWS_SDK_VERSION "${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}")
     elseif(DEFINED ENV{WindowsSDKVersion})
         string(REGEX REPLACE "\\\\$" "" WINDOWS_SDK_VERSION "$ENV{WindowsSDKVersion}")
     else()
-        set(WINDOWS_SDK_VERSION "10.0.26100.0")
+        file(GLOB SDK_VERSIONS
+            "${WINDOWS_SDK_DIR}/Include/*/cppwinrt"
+        )
+        if(NOT SDK_VERSIONS)
+            message(FATAL_ERROR
+                "Could not find the Windows SDK C++/WinRT headers."
+            )
+        endif()
+        list(SORT SDK_VERSIONS COMPARE NATURAL ORDER DESCENDING)
+        list(GET SDK_VERSIONS 0 CPPWINRT_INCLUDE_DIR)
     endif()
-    
-    # C++/WinRT headers location
-    set(CPPWINRT_INCLUDE_DIR "${WINDOWS_SDK_DIR}/Include/${WINDOWS_SDK_VERSION}/cppwinrt")
-    
-    if(EXISTS "${CPPWINRT_INCLUDE_DIR}")
-        target_include_directories(core PRIVATE "${CPPWINRT_INCLUDE_DIR}")
-        message(STATUS "C++/WinRT headers found at: ${CPPWINRT_INCLUDE_DIR}")
-    else()
-        message(WARNING "C++/WinRT headers not found. Install Windows SDK 10.0.17134.0 or later.")
+
+    if(NOT DEFINED CPPWINRT_INCLUDE_DIR)
+        set(CPPWINRT_INCLUDE_DIR
+            "${WINDOWS_SDK_DIR}/Include/${WINDOWS_SDK_VERSION}/cppwinrt"
+        )
     endif()
-    
+
+    if(NOT EXISTS
+        "${CPPWINRT_INCLUDE_DIR}/windows.graphics.directx.direct3d11.interop.h"
+    )
+        message(FATAL_ERROR
+            "C++/WinRT Direct3D interop headers were not found at "
+            "${CPPWINRT_INCLUDE_DIR}"
+        )
+    endif()
+
+    target_include_directories(core PRIVATE "${CPPWINRT_INCLUDE_DIR}")
+    message(STATUS "C++/WinRT headers found at: ${CPPWINRT_INCLUDE_DIR}")
+
     target_link_libraries(core
         PUBLIC
             # Desktop Window Manager (for window enumeration)
@@ -149,12 +167,19 @@ if(WIN32)
             shcore
     )
     
-    # Enable C++/WinRT compiler options
-    target_compile_options(core PRIVATE 
-        /await:strict    # Enable C++20 coroutines
-        /EHsc            # Exception handling
-        /bigobj          # Required for WinRT large object files
-    )
+    # Enable C++/WinRT compiler options only for MSVC.
+    # GNU builds must not receive MSVC-style /flags.
+    if(MSVC)
+        target_compile_options(core PRIVATE
+            /await:strict
+            /EHsc
+            /bigobj
+        )
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(core PRIVATE
+            -municode
+        )
+    endif()
     
     # Define for Windows Runtime support
     target_compile_definitions(core PRIVATE
