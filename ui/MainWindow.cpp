@@ -16,6 +16,9 @@
 #include <AudioCaptureSource.h>
 #include <BuiltinRhiFilters.h>
 #include <PluginManager.h>
+#include "SettingsDialog.h"
+#include <ProjectPersistence.h>
+#include <GlobalHotkeyManager.h>
 #include <Scene.h>
 #include <SceneItem.h>
 
@@ -57,6 +60,8 @@ MainWindow::MainWindow(QWidget* parent)
 }
 
 MainWindow::~MainWindow() {
+    GlobalHotkeyManager::instance().shutdown();
+
     // Finalize the independent recording file before shutting down the render loop.
     SceneManager::instance().setRecordingOutputEnabled(false);
     RecordingManager::instance().stopRecording();
@@ -125,6 +130,24 @@ void MainWindow::setupMenuBar() {
     
     fileMenu->addSeparator();
     
+    QAction* saveProfileAction = fileMenu->addAction("Save &Profile...");
+    connect(saveProfileAction, &QAction::triggered,
+            this, &MainWindow::onSaveProfile);
+
+    QAction* loadProfileAction = fileMenu->addAction("&Load Profile...");
+    connect(loadProfileAction, &QAction::triggered,
+            this, &MainWindow::onLoadProfile);
+
+    QAction* saveCollectionAction =
+        fileMenu->addAction("Save &Scene Collection...");
+    connect(saveCollectionAction, &QAction::triggered,
+            this, &MainWindow::onSaveSceneCollection);
+
+    QAction* loadCollectionAction =
+        fileMenu->addAction("Load S&cene Collection...");
+    connect(loadCollectionAction, &QAction::triggered,
+            this, &MainWindow::onLoadSceneCollection);
+
     QAction* settingsAction = fileMenu->addAction("&Settings...");
     settingsAction->setShortcut(QKeySequence("Ctrl+,"));
     connect(settingsAction, &QAction::triggered, this, &MainWindow::onSettingsClicked);
@@ -269,74 +292,29 @@ void MainWindow::createSourcesDock() {
 void MainWindow::createControlsDock() {
     m_controlsDock = new QDockWidget("Controls", this);
     m_controlsDock->setObjectName("controlsDock");
-    m_controlsDock->setFeatures(QDockWidget::DockWidgetMovable | 
-                                QDockWidget::DockWidgetFloatable);
-    
-    QWidget* container = new QWidget();
-    QVBoxLayout* layout = new QVBoxLayout(container);
+    m_controlsDock->setFeatures(
+        QDockWidget::DockWidgetMovable |
+        QDockWidget::DockWidgetFloatable);
+
+    auto* container = new QWidget();
+    auto* layout = new QVBoxLayout(container);
     layout->setContentsMargins(8, 8, 8, 8);
     layout->setSpacing(12);
-    
-    // Stream settings group
-    QGroupBox* streamGroup = new QGroupBox("Stream Settings");
-    QVBoxLayout* streamLayout = new QVBoxLayout(streamGroup);
-    
-    QLabel* urlLabel = new QLabel("Stream URL:");
-    m_streamUrlEdit = new QLineEdit();
-    m_streamUrlEdit->setPlaceholderText("rtmp://live.twitch.tv/app");
-    m_streamUrlEdit->setText("rtmp://live.twitch.tv/app");
-    
-    QLabel* keyLabel = new QLabel("Stream Key:");
-    m_streamKeyEdit = new QLineEdit();
-    m_streamKeyEdit->setPlaceholderText("Enter stream key");
-    m_streamKeyEdit->setEchoMode(QLineEdit::Password);
-    
-    streamLayout->addWidget(urlLabel);
-    streamLayout->addWidget(m_streamUrlEdit);
-    streamLayout->addWidget(keyLabel);
-    streamLayout->addWidget(m_streamKeyEdit);
-    
-    layout->addWidget(streamGroup);
-    
-    // Recording settings and controls
-    QGroupBox* recordingGroup = new QGroupBox("Recording");
-    QVBoxLayout* recordingLayout = new QVBoxLayout(recordingGroup);
 
-    QHBoxLayout* pathLayout = new QHBoxLayout();
-    m_recordPathEdit = new QLineEdit();
-    m_recordPathEdit->setPlaceholderText("Output file path");
+    auto* outputGroup = new QGroupBox("Output");
+    auto* outputLayout = new QVBoxLayout(outputGroup);
+    auto* outputInfo = new QLabel(
+        "Stream, video, audio and recording configuration are managed in "
+        "Settings. Save reusable output configuration as a Profile.",
+        outputGroup);
+    outputInfo->setWordWrap(true);
+    outputLayout->addWidget(outputInfo);
+    layout->addWidget(outputGroup);
 
-    const QString moviesDir =
-        QStandardPaths::writableLocation(QStandardPaths::MoviesLocation);
-    const QString defaultRecordPath =
-        QDir(moviesDir.isEmpty() ? QDir::homePath() : moviesDir)
-            .filePath("WeaR-recording.mkv");
-    m_recordPathEdit->setText(defaultRecordPath);
+    auto* recordingGroup = new QGroupBox("Recording");
+    auto* recordingLayout = new QVBoxLayout(recordingGroup);
+    auto* recordButtons = new QHBoxLayout();
 
-    m_recordBrowseBtn = new QPushButton("Browse...");
-    m_recordBrowseBtn->setFixedWidth(84);
-    pathLayout->addWidget(m_recordPathEdit, 1);
-    pathLayout->addWidget(m_recordBrowseBtn);
-    recordingLayout->addLayout(pathLayout);
-
-    QHBoxLayout* formatLayout = new QHBoxLayout();
-    formatLayout->addWidget(new QLabel("Format:"));
-    m_recordFormatCombo = new QComboBox();
-    m_recordFormatCombo->addItem("MKV");
-    m_recordFormatCombo->addItem("MP4");
-    m_recordFormatCombo->addItem("FLV");
-    formatLayout->addWidget(m_recordFormatCombo, 1);
-
-    formatLayout->addWidget(new QLabel("Video bitrate:"));
-    m_recordBitrateSpin = new QSpinBox();
-    m_recordBitrateSpin->setRange(500, 100000);
-    m_recordBitrateSpin->setSingleStep(500);
-    m_recordBitrateSpin->setValue(12000);
-    m_recordBitrateSpin->setSuffix(" kbps");
-    formatLayout->addWidget(m_recordBitrateSpin);
-    recordingLayout->addLayout(formatLayout);
-
-    QHBoxLayout* recordButtonsLayout = new QHBoxLayout();
     m_recordBtn = new QPushButton("Start Recording");
     m_recordBtn->setObjectName("startRecordBtn");
     m_recordBtn->setMinimumHeight(40);
@@ -349,28 +327,23 @@ void MainWindow::createControlsDock() {
     m_recordDurationLabel->setMinimumWidth(125);
     m_recordDurationLabel->setAlignment(Qt::AlignCenter);
 
-    recordButtonsLayout->addWidget(m_recordBtn, 2);
-    recordButtonsLayout->addWidget(m_pauseRecordBtn, 1);
-    recordButtonsLayout->addWidget(m_recordDurationLabel);
-    recordingLayout->addLayout(recordButtonsLayout);
-
+    recordButtons->addWidget(m_recordBtn, 2);
+    recordButtons->addWidget(m_pauseRecordBtn, 1);
+    recordButtons->addWidget(m_recordDurationLabel);
+    recordingLayout->addLayout(recordButtons);
     layout->addWidget(recordingGroup);
 
-    // Scene transition settings. Duration is persisted independently for each
-    // transition type; selecting a type restores its configured value.
-    QGroupBox* transitionGroup = new QGroupBox("Scene Transition");
-    QVBoxLayout* transitionLayout = new QVBoxLayout(transitionGroup);
+    auto* transitionGroup = new QGroupBox("Scene Transition");
+    auto* transitionLayout = new QVBoxLayout(transitionGroup);
 
-    QHBoxLayout* transitionTypeLayout = new QHBoxLayout();
+    auto* transitionTypeLayout = new QHBoxLayout();
     transitionTypeLayout->addWidget(new QLabel("Type:"));
     m_transitionTypeCombo = new QComboBox();
-    m_transitionTypeCombo->addItem("Cut");
-    m_transitionTypeCombo->addItem("Fade");
-    m_transitionTypeCombo->addItem("Slide");
+    m_transitionTypeCombo->addItems({"Cut", "Fade", "Slide"});
     transitionTypeLayout->addWidget(m_transitionTypeCombo, 1);
     transitionLayout->addLayout(transitionTypeLayout);
 
-    QHBoxLayout* transitionDurationLayout = new QHBoxLayout();
+    auto* transitionDurationLayout = new QHBoxLayout();
     transitionDurationLayout->addWidget(new QLabel("Duration:"));
     m_transitionDurationSpin = new QSpinBox();
     m_transitionDurationSpin->setRange(0, 10000);
@@ -380,20 +353,14 @@ void MainWindow::createControlsDock() {
         SceneManager::instance().transitionDuration(SceneTransitionType::Fade));
     transitionDurationLayout->addWidget(m_transitionDurationSpin, 1);
     transitionLayout->addLayout(transitionDurationLayout);
-
     layout->addWidget(transitionGroup);
 
-
-    // Basic GPU filter controls
-    QGroupBox* filterGroup = new QGroupBox("Video Filter");
-    QHBoxLayout* filterLayout = new QHBoxLayout(filterGroup);
+    auto* filterGroup = new QGroupBox("Video Filter");
+    auto* filterLayout = new QHBoxLayout(filterGroup);
 
     m_filterCombo = new QComboBox();
-    m_filterCombo->addItem("None");
-    m_filterCombo->addItem("Chroma Key");
-    m_filterCombo->addItem("Gaussian Blur");
-    m_filterCombo->addItem("Color Correction");
-
+    m_filterCombo->addItems(
+        {"None", "Chroma Key", "Gaussian Blur", "Color Correction"});
     m_applyFilterBtn = new QPushButton("Apply");
     m_applyFilterBtn->setMinimumHeight(30);
 
@@ -401,25 +368,21 @@ void MainWindow::createControlsDock() {
     filterLayout->addWidget(m_applyFilterBtn);
     layout->addWidget(filterGroup);
 
-    // Action buttons
-    QGroupBox* actionsGroup = new QGroupBox("Actions");
-    QVBoxLayout* actionsLayout = new QVBoxLayout(actionsGroup);
-    
+    auto* actionsGroup = new QGroupBox("Actions");
+    auto* actionsLayout = new QVBoxLayout(actionsGroup);
+
     m_startStreamBtn = new QPushButton("Start Streaming");
     m_startStreamBtn->setObjectName("startStreamBtn");
     m_startStreamBtn->setMinimumHeight(40);
-    
+
     m_settingsBtn = new QPushButton("Settings");
     m_settingsBtn->setMinimumHeight(32);
-    
+
     actionsLayout->addWidget(m_startStreamBtn);
     actionsLayout->addWidget(m_settingsBtn);
-    
     layout->addWidget(actionsGroup);
-    
-    // Spacer
+
     layout->addStretch();
-    
     m_controlsDock->setWidget(container);
 }
 
@@ -456,6 +419,66 @@ void MainWindow::setupConnections() {
             this, &MainWindow::onTransitionTypeChanged);
     connect(m_transitionDurationSpin, &QSpinBox::valueChanged,
             this, &MainWindow::onTransitionDurationChanged);
+
+    auto& hotkeys = GlobalHotkeyManager::instance();
+    hotkeys.initialize();
+
+    hotkeys.setCallback(GlobalHotkeyAction::StartStream, [this]() {
+        if (!StreamManager::instance().isConnected()) {
+            QMetaObject::invokeMethod(
+                this, &MainWindow::onStartStreaming,
+                Qt::QueuedConnection);
+        }
+    });
+
+    hotkeys.setCallback(GlobalHotkeyAction::StopStream, [this]() {
+        if (StreamManager::instance().isConnected()) {
+            QMetaObject::invokeMethod(
+                this, &MainWindow::onStopStreaming,
+                Qt::QueuedConnection);
+        }
+    });
+
+    hotkeys.setCallback(GlobalHotkeyAction::StartRecord, [this]() {
+        if (!RecordingManager::instance().isRecording() &&
+            !RecordingManager::instance().isPaused()) {
+            QMetaObject::invokeMethod(
+                this, &MainWindow::onRecordClicked,
+                Qt::QueuedConnection);
+        }
+    });
+
+    hotkeys.setCallback(GlobalHotkeyAction::StopRecord, [this]() {
+        if (RecordingManager::instance().isRecording() ||
+            RecordingManager::instance().isPaused()) {
+            QMetaObject::invokeMethod(this, [this]() {
+                onRecordClicked();
+            }, Qt::QueuedConnection);
+        }
+    });
+
+    hotkeys.setCallback(GlobalHotkeyAction::NextScene, [this]() {
+        QMetaObject::invokeMethod(this, [this]() {
+            const QList<Scene*> scenes = SceneManager::instance().scenes();
+            if (scenes.size() < 2) return;
+            Scene* active = SceneManager::instance().activeScene();
+            const int index = std::max(0, scenes.indexOf(active));
+            SceneManager::instance().setActiveScene(
+                scenes.at((index + 1) % scenes.size()));
+            refreshScenesList();
+            refreshSourcesList();
+        }, Qt::QueuedConnection);
+    });
+
+    hotkeys.setCallback(GlobalHotkeyAction::ToggleMicMute, [this]() {
+        QMetaObject::invokeMethod(this, [this]() {
+            if (m_micTrackId < 0) return;
+            auto& mixer = AudioMixer::instance();
+            mixer.setMuted(
+                m_micTrackId,
+                !mixer.isMuted(m_micTrackId));
+        }, Qt::QueuedConnection);
+    });
 
     connect(&RecordingManager::instance(), &RecordingManager::stateChanged,
             this, &MainWindow::updateRecordingState);
@@ -512,7 +535,18 @@ void MainWindow::initializeManagers() {
 
     m_micAudio = std::make_shared<MicrophoneAudioSource>();
     m_micAudio->start();
-    AudioMixer::instance().addTrack(m_micAudio);
+    m_micTrackId = AudioMixer::instance().addTrack(m_micAudio);
+
+    RecordingSettings recordingDefaults =
+        RecordingManager::instance().settings();
+    if (recordingDefaults.outputPath.isEmpty()) {
+        const QString moviesDir =
+            QStandardPaths::writableLocation(QStandardPaths::MoviesLocation);
+        recordingDefaults.outputPath = QDir(
+            moviesDir.isEmpty() ? QDir::homePath() : moviesDir)
+            .filePath("WeaR-recording.mkv");
+        RecordingManager::instance().configure(recordingDefaults);
+    }
 
     if (m_audioMixerDock) {
         m_audioMixerDock->refreshTracks();
@@ -764,71 +798,41 @@ void MainWindow::onRecordClicked() {
         return;
     }
 
-    RecordingSettings settings;
-    settings.width = 1920;
-    settings.height = 1080;
-    settings.fpsNum = 60;
-    settings.fpsDen = 1;
-    settings.videoBitrate = m_recordBitrateSpin->value();
-    settings.maxVideoBitrate = settings.videoBitrate + settings.videoBitrate / 3;
-    settings.bufferSize = settings.videoBitrate * 2;
-    settings.crf = 18;
-    settings.qp = 18;
-    settings.encoderType = EncoderType::Auto;
-    settings.preset = EncoderPreset::Fast;
-    settings.rateControl = RateControlMode::VBR;
-    settings.keyframeInterval = 2;
-    settings.bFrames = 2;
-    settings.audioEnabled = true;
-    settings.audioSampleRate = 48000;
-    settings.audioChannels = 2;
-    settings.audioBitrate = 192;
+    RecordingSettings settings = recorder.settings();
+    QString path = settings.outputPath.trimmed();
 
-    switch (m_recordFormatCombo->currentIndex()) {
-        case 1:
-            settings.format = RecordingFormat::MP4;
-            break;
-        case 2:
-            settings.format = RecordingFormat::FLV;
-            break;
-        default:
-            settings.format = RecordingFormat::MKV;
-            break;
-    }
-
-    QString path = m_recordPathEdit->text().trimmed();
     if (path.isEmpty()) {
-        onBrowseRecordingPath();
-        path = m_recordPathEdit->text().trimmed();
-    }
-    if (path.isEmpty()) {
-        return;
+        path = QFileDialog::getSaveFileName(
+            this,
+            "Choose recording output",
+            QStandardPaths::writableLocation(QStandardPaths::MoviesLocation),
+            "MKV Video (*.mkv);;MP4 Video (*.mp4);;FLV Video (*.flv);;All Files (*)");
+        if (path.isEmpty()) return;
     }
 
-    const QString expectedExt =
+    const QString extension =
         settings.format == RecordingFormat::MP4
             ? "mp4"
             : (settings.format == RecordingFormat::FLV ? "flv" : "mkv");
 
     QFileInfo info(path);
-    if (info.suffix().compare(expectedExt, Qt::CaseInsensitive) != 0) {
-        const QString directory = info.path();
+    if (info.suffix().compare(extension, Qt::CaseInsensitive) != 0) {
         const QString base = info.completeBaseName().isEmpty()
             ? "WeaR-recording"
             : info.completeBaseName();
-        path = QDir(directory).filePath(base + "." + expectedExt);
-        m_recordPathEdit->setText(path);
+        path = QDir(info.path()).filePath(base + "." + extension);
     }
 
-    if (!recorder.configure(settings)) {
+    settings.outputPath = path;
+    if (!recorder.configure(settings) ||
+        !recorder.startRecording(path)) {
+        const QString error = recorder.lastError();
+        if (!error.isEmpty()) {
+            QMessageBox::warning(this, "Recording Error", error);
+        }
         return;
     }
 
-    if (!recorder.startRecording(path)) {
-        return;
-    }
-
-    // Only the recording output is enabled. Streaming remains untouched.
     SceneManager::instance().setRecordingOutputEnabled(true);
 }
 
@@ -842,76 +846,64 @@ void MainWindow::onPauseRecordingClicked() {
     }
 }
 
-void MainWindow::onBrowseRecordingPath() {
-    const QString selected = QFileDialog::getSaveFileName(
-        this,
-        "Choose recording output",
-        m_recordPathEdit ? m_recordPathEdit->text() : QString(),
-        "MKV Video (*.mkv);;MP4 Video (*.mp4);;FLV Video (*.flv);;All Files (*)");
-
-    if (selected.isEmpty()) {
-        return;
-    }
-
-    m_recordPathEdit->setText(selected);
-
-    const QString suffix = QFileInfo(selected).suffix().toLower();
-    if (suffix == "mp4") {
-        m_recordFormatCombo->setCurrentIndex(1);
-    } else if (suffix == "flv") {
-        m_recordFormatCombo->setCurrentIndex(2);
-    } else {
-        m_recordFormatCombo->setCurrentIndex(0);
-    }
-}
-
 void MainWindow::onStartStreaming() {
-    QString url = m_streamUrlEdit->text().trimmed();
-    QString key = m_streamKeyEdit->text().trimmed();
-    
-    if (url.isEmpty()) {
-        QMessageBox::warning(this, "Missing URL", "Please enter a stream URL.");
+    auto streamSettings = StreamManager::instance().settings();
+    auto encoderSettings = EncoderManager::instance().settings();
+
+    if (streamSettings.url.trimmed().isEmpty()) {
+        QMessageBox::warning(
+            this, "Missing URL",
+            "Configure the stream URL in Settings before starting.");
         return;
     }
-    
-    // Configure stream settings
-    StreamSettings settings;
-    settings.url = url;
-    settings.streamKey = key;
-    settings.videoWidth = 1920;
-    settings.videoHeight = 1080;
-    settings.videoFpsNum = 60;
-    settings.videoBitrate = 6000;
-    settings.audioEnabled = true;
-    settings.audioSampleRate = 48000;
-    settings.audioChannels = 2;
-    settings.audioBitrate = 160;
-    
-    StreamManager::instance().configure(settings);
-    
-    // Start encoder first
-    if (!EncoderManager::instance().isRunning()) {
-        EncoderManager::instance().start();
-    }
-    
-    // Provide codec parameters to stream muxer
-    StreamManager::instance().setVideoCodecParameters(EncoderManager::instance().videoCodecParameters());
-    StreamManager::instance().setAudioCodecParameters(EncoderManager::instance().audioCodecParameters());
 
-    // Connect encoder to stream
+    encoderSettings.width = streamSettings.videoWidth;
+    encoderSettings.height = streamSettings.videoHeight;
+    encoderSettings.fpsNum = streamSettings.videoFpsNum;
+    encoderSettings.fpsDen = streamSettings.videoFpsDen;
+    encoderSettings.bitrate = streamSettings.videoBitrate;
+    encoderSettings.audioEnabled = streamSettings.audioEnabled;
+    encoderSettings.audioSampleRate = streamSettings.audioSampleRate;
+    encoderSettings.audioChannels = streamSettings.audioChannels;
+    encoderSettings.audioBitrate = streamSettings.audioBitrate;
+
+    if (!EncoderManager::instance().configure(encoderSettings) ||
+        !StreamManager::instance().configure(streamSettings)) {
+        QMessageBox::critical(
+            this, "Stream Error",
+            "Failed to apply stream/encoder settings.");
+        return;
+    }
+
+    if (!EncoderManager::instance().isRunning() &&
+        !EncoderManager::instance().start()) {
+        QMessageBox::critical(
+            this, "Stream Error",
+            "Failed to start the encoder.");
+        return;
+    }
+
+    StreamManager::instance().setVideoCodecParameters(
+        EncoderManager::instance().videoCodecParameters());
+    StreamManager::instance().setAudioCodecParameters(
+        EncoderManager::instance().audioCodecParameters());
+
     EncoderManager::instance().setPacketCallback([](const EncodedPacket& pkt) {
-        StreamManager::instance().writePacket(pkt.data, pkt.size,
-                                              pkt.pts, pkt.dts, pkt.isKeyframe, pkt.isAudio);
+        StreamManager::instance().writePacket(
+            pkt.data, pkt.size, pkt.pts, pkt.dts,
+            pkt.isKeyframe, pkt.isAudio);
     });
-    
-    // Enable encoder output from scene manager
+
     SceneManager::instance().setEncoderOutputEnabled(true);
-    
-    // Start streaming
+
     if (StreamManager::instance().startStream()) {
         m_statusLabel->setText("Connecting...");
     } else {
-        QMessageBox::critical(this, "Stream Error", "Failed to start streaming.");
+        SceneManager::instance().setEncoderOutputEnabled(false);
+        EncoderManager::instance().stop();
+        QMessageBox::critical(
+            this, "Stream Error",
+            "Failed to start streaming.");
     }
 }
 
@@ -926,9 +918,171 @@ void MainWindow::onStopStreaming() {
 }
 
 void MainWindow::onSettingsClicked() {
-    QMessageBox::information(this, "Settings", 
-                             "Settings dialog coming soon!\n\n"
-                             "Configure output resolution, bitrate, encoder, etc.");
+    SettingsDialog dialog(m_micTrackId, this);
+    dialog.exec();
+}
+
+bool MainWindow::applyProfile(
+    const StreamSettings& stream,
+    const EncoderSettings& encoder,
+    const RecordingSettings& recording,
+    const QSize& outputResolution,
+    double targetFps,
+    bool encoderOutputEnabled,
+    bool recordingOutputEnabled) {
+    Q_UNUSED(encoderOutputEnabled);
+    Q_UNUSED(recordingOutputEnabled);
+
+    if (StreamManager::instance().isConnected() ||
+        RecordingManager::instance().isRecording() ||
+        RecordingManager::instance().isPaused() ||
+        EncoderManager::instance().isRunning()) {
+        QMessageBox::warning(
+            this, "Profile",
+            "Stop streaming and recording before loading a profile.");
+        return false;
+    }
+
+    if (!StreamManager::instance().configure(stream) ||
+        !EncoderManager::instance().configure(encoder) ||
+        !RecordingManager::instance().configure(recording)) {
+        return false;
+    }
+
+    SceneManager::instance().setOutputResolution(outputResolution);
+    SceneManager::instance().setTargetFps(targetFps);
+    SceneManager::instance().setEncoderOutputEnabled(false);
+    SceneManager::instance().setRecordingOutputEnabled(false);
+    return true;
+}
+
+void MainWindow::onSaveProfile() {
+    const QString path = QFileDialog::getSaveFileName(
+        this, "Save Profile", QDir::homePath(),
+        "WeaR Profile (*.json)");
+    if (path.isEmpty()) return;
+
+    QString error;
+    if (!ProjectPersistence::saveProfile(
+            path,
+            StreamManager::instance().settings(),
+            EncoderManager::instance().settings(),
+            RecordingManager::instance().settings(),
+            SceneManager::instance().outputResolution(),
+            SceneManager::instance().targetFps(),
+            SceneManager::instance().isEncoderOutputEnabled(),
+            SceneManager::instance().isRecordingOutputEnabled(),
+            &error)) {
+        QMessageBox::warning(this, "Save Profile", error);
+        return;
+    }
+
+    m_statusLabel->setText(QString("Profile saved: %1").arg(path));
+}
+
+void MainWindow::onLoadProfile() {
+    const QString path = QFileDialog::getOpenFileName(
+        this, "Load Profile", QDir::homePath(),
+        "WeaR Profile (*.json)");
+    if (path.isEmpty()) return;
+
+    StreamSettings stream = StreamManager::instance().settings();
+    EncoderSettings encoder = EncoderManager::instance().settings();
+    RecordingSettings recording = RecordingManager::instance().settings();
+    QSize outputResolution = SceneManager::instance().outputResolution();
+    double targetFps = SceneManager::instance().targetFps();
+    bool encoderOutput = SceneManager::instance().isEncoderOutputEnabled();
+    bool recordingOutput = SceneManager::instance().isRecordingOutputEnabled();
+
+    QString error;
+    if (!ProjectPersistence::loadProfile(
+            path, stream, encoder, recording,
+            outputResolution, targetFps,
+            encoderOutput, recordingOutput, &error)) {
+        QMessageBox::warning(this, "Load Profile", error);
+        return;
+    }
+
+    if (!applyProfile(
+            stream, encoder, recording,
+            outputResolution, targetFps,
+            encoderOutput, recordingOutput)) {
+        QMessageBox::warning(
+            this, "Load Profile",
+            "The profile settings could not be applied.");
+        return;
+    }
+
+    m_statusLabel->setText(QString("Profile loaded: %1").arg(path));
+}
+
+void MainWindow::onSaveSceneCollection() {
+    const QString path = QFileDialog::getSaveFileName(
+        this, "Save Scene Collection", QDir::homePath(),
+        "WeaR Scene Collection (*.json)");
+    if (path.isEmpty()) return;
+
+    QString error;
+    if (!ProjectPersistence::saveSceneCollection(
+            path, SceneManager::instance(), &error)) {
+        QMessageBox::warning(this, "Save Scene Collection", error);
+        return;
+    }
+
+    m_statusLabel->setText(
+        QString("Scene collection saved: %1").arg(path));
+}
+
+void MainWindow::onLoadSceneCollection() {
+    if (StreamManager::instance().isConnected() ||
+        RecordingManager::instance().isRecording() ||
+        RecordingManager::instance().isPaused()) {
+        QMessageBox::warning(
+            this, "Load Scene Collection",
+            "Stop streaming and recording before loading a scene collection.");
+        return;
+    }
+
+    const QString path = QFileDialog::getOpenFileName(
+        this, "Load Scene Collection", QDir::homePath(),
+        "WeaR Scene Collection (*.json)");
+    if (path.isEmpty()) return;
+
+    const auto sourceResolver = [](const QString& id) -> ISource* {
+        if (id == CaptureManager::instance().info().id) {
+            return &CaptureManager::instance();
+        }
+        return PluginManager::instance().createSource(id);
+    };
+
+    const auto filterResolver = [this](const QString& id) -> IFilter* {
+        if (id == m_chromaKeyFilter->info().id) {
+            return m_chromaKeyFilter.get();
+        }
+        if (id == m_gaussianBlurFilter->info().id) {
+            return m_gaussianBlurFilter.get();
+        }
+        if (id == m_colorCorrectionFilter->info().id) {
+            return m_colorCorrectionFilter.get();
+        }
+        return PluginManager::instance().createFilter(id);
+    };
+
+    QString error;
+    if (!ProjectPersistence::loadSceneCollection(
+            path,
+            SceneManager::instance(),
+            sourceResolver,
+            filterResolver,
+            &error)) {
+        QMessageBox::warning(this, "Load Scene Collection", error);
+        return;
+    }
+
+    refreshScenesList();
+    refreshSourcesList();
+    m_statusLabel->setText(
+        QString("Scene collection loaded: %1").arg(path));
 }
 
 void MainWindow::onPreviewFrame(const QImage& frame) {
