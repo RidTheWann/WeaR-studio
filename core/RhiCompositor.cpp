@@ -14,7 +14,9 @@
 #include <QOffscreenSurface>
 #include <QOpenGLContext>
 #include <QVector>
+#if QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)
 #include <QVulkanInstance>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -523,7 +525,7 @@ private:
         }
 
         case QRhi::Vulkan: {
-#if QT_CONFIG(vulkan)
+#if QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)
             m_vulkanInstance = std::make_unique<QVulkanInstance>();
             m_vulkanInstance->setExtensions(
                 QRhiVulkanInitParams::preferredInstanceExtensions());
@@ -673,11 +675,10 @@ private:
             return false;
         }
 
-        QRhiShaderStage shaderStages[] = {
+        m_pipeline->setShaderStages({
             {QRhiShaderStage::Vertex, m_vertexShader},
             {QRhiShaderStage::Fragment, m_fragmentShader}
-        };
-        m_pipeline->setShaderStages(shaderStages);
+        });
 
         QRhiVertexInputLayout inputLayout;
         inputLayout.setBindings({
