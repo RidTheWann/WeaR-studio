@@ -13,6 +13,8 @@ set(CORE_SOURCES
     StreamManager.h
     SceneManager.cpp
     SceneManager.h
+    BrowserSourceRuntime.cpp
+    BrowserSourceRuntime.h
     Scene.cpp
     Scene.h
     SceneItem.cpp
@@ -74,6 +76,11 @@ target_link_libraries(core
         Qt6::OpenGLWidgets
         Qt6::GuiPrivate
 )
+
+if(WEAR_ENABLE_CEF)
+    target_include_directories(core PUBLIC "${CEF_ROOT}")
+    target_link_libraries(core PUBLIC libcef_dll_wrapper)
+endif()
 
 # ==============================================================================
 # FFmpeg Dependencies
