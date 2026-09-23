@@ -44,9 +44,12 @@ jobs:
         shell: pwsh
         run: |
           if (Test-Path build) { Remove-Item -Recurse -Force build }
-          cmake -S . -B build -G "Ninja Multi-Config" `
+          cmake -S . -B build `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
             "-DCMAKE_PREFIX_PATH=$env:Qt6_DIR" `
-            "-DFFMPEG_ROOT=$env:FFMPEG_ROOT"
+            "-DFFMPEG_ROOT=$env:FFMPEG_ROOT" `
+            "-DCMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION=10.0.26100.0"
 
       - name: Build Debug
         shell: pwsh
