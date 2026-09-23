@@ -26,9 +26,9 @@ float smoothStep(float edge0, float edge1, float x) {
     return t * t * (3.0f - 2.0f * t);
 }
 
-QImage ensureArgbPremultiplied(const VideoFrame& input) {
+QImage ensureRgba(const VideoFrame& input) {
     if (!input.softwareFrame.isNull()) {
-        return input.softwareFrame.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+        return input.softwareFrame.convertToFormat(QImage::Format_RGBA8888);
     }
     return {};
 }
@@ -143,7 +143,7 @@ void ChromaKeyFilter::resetToDefaults() {
 }
 
 VideoFrame ChromaKeyFilter::processVideo(const VideoFrame& input) {
-    const QImage source = ensureArgbPremultiplied(input);
+    const QImage source = ensureRgba(input);
     if (source.isNull()) {
         return input;
     }
@@ -189,7 +189,7 @@ VideoFrame ChromaKeyFilter::processVideo(const VideoFrame& input) {
     }
 
     VideoFrame output = input;
-    output.softwareFrame = result;
+    output.softwareFrame = result.convertToFormat(QImage::Format_ARGB32_Premultiplied);
     output.isHardwareFrame = false;
     output.hardwareFrame = nullptr;
     return output;
@@ -320,7 +320,7 @@ VideoFrame GaussianBlurFilter::processVideo(const VideoFrame& input) {
         {1, 2, 1}
     };
 
-    QImage result(source.size(), QImage::Format_ARGB32_Premultiplied);
+    QImage result(source.size(), QImage::Format_RGBA8888);
     for (int y = 0; y < source.height(); ++y) {
         auto* dst = reinterpret_cast<QRgb*>(result.scanLine(y));
         for (int x = 0; x < source.width(); ++x) {
@@ -346,8 +346,8 @@ VideoFrame GaussianBlurFilter::processVideo(const VideoFrame& input) {
                 }
             }
 
-            dst[x] = qPremultiply(qRgba(
-                ar / weightSum, ag / weightSum, ab / weightSum, aa / weightSum));
+            dst[x] = qRgba(
+                ar / weightSum, ag / weightSum, ab / weightSum, aa / weightSum);
         }
     }
 
