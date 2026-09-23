@@ -15,6 +15,7 @@
 #include <QSaveFile>
 #include <QSet>
 #include <QJsonValue>
+#include <QMetaType>
 
 #include <algorithm>
 #include <cmath>
@@ -166,17 +167,15 @@ QJsonValue ProjectPersistence::variantToJson(const QVariant& value) {
         return QJsonValue();
     }
 
-    if (value.canConvert<QColor>()) {
+    if (value.metaType() == QMetaType::fromType<QColor>()) {
         const QColor color = value.value<QColor>();
-        if (color.isValid()) {
-            QJsonObject object;
-            object.insert("__type", "color");
-            object.insert("value", colorToString(color));
-            return object;
-        }
+        QJsonObject object;
+        object.insert("__type", "color");
+        object.insert("value", colorToString(color));
+        return object;
     }
 
-    if (value.canConvert<QPointF>()) {
+    if (value.metaType() == QMetaType::fromType<QPointF>()) {
         const QPointF point = value.toPointF();
         QJsonObject object;
         object.insert("__type", "pointF");
@@ -185,7 +184,7 @@ QJsonValue ProjectPersistence::variantToJson(const QVariant& value) {
         return object;
     }
 
-    if (value.canConvert<QSizeF>()) {
+    if (value.metaType() == QMetaType::fromType<QSizeF>()) {
         const QSizeF size = value.toSizeF();
         QJsonObject object;
         object.insert("__type", "sizeF");
@@ -1009,7 +1008,14 @@ bool ProjectPersistence::loadSceneCollection(
 
     const QUuid activeId(root.value("activeSceneId").toString());
     Scene* active = sceneManager.sceneById(activeId);
+
+    // Active-scene selection is persisted as identity, not as a transition
+    // animation. Temporarily force Cut so loading cannot leave a runtime
+    // transition state behind.
+    const SceneTransitionType oldTransition = sceneManager.transitionType();
+    sceneManager.setTransitionType(SceneTransitionType::Cut);
     sceneManager.setActiveScene(active ? active : first);
+    sceneManager.setTransitionType(oldTransition);
     return true;
 }
 
