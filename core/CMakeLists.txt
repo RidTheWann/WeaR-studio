@@ -125,6 +125,7 @@ if(WIN32)
             d3d11
             dxgi
             d3dcompiler
+            dbghelp
             
             # Windows Runtime (for Graphics Capture API)
             windowsapp
