@@ -565,13 +565,6 @@ cmake --build build --config Release --target my_awesome_source
 
 Replace QPainter composition with Qt RHI for GPU-accelerated rendering:
 
-
-#### 2. 🎨 GPU Shader Effects (Qt RHI)
-
-**Priority:** High
-
-Replace QPainter composition with Qt RHI for GPU-accelerated rendering:
-
 - **Benefits**: 60+ FPS composition without CPU bottleneck
 - **Shader Effects**: Blur, chroma key, color correction, LUTs
 - **Seamless Scaling**: Hardware scaling without quality loss
@@ -586,7 +579,7 @@ class RhiRenderer {
 };
 ```
 
-#### 3. 📼 Recording Module
+#### 2. 📼 Recording Module
 
 **Priority:** High
 
