@@ -24,7 +24,6 @@
 #include <vector>
 
 #include <rhi/qrhi.h>
-#include <QtGui/qshader.h>
 
 namespace WeaR {
 
