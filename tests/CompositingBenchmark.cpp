@@ -13,6 +13,7 @@
 #include <cmath>
 #include <iostream>
 #include <vector>
+#include <stdexcept>
 
 #include "RhiCompositor.h"
 #include "Scene.h"
