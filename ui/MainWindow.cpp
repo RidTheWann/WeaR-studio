@@ -99,11 +99,13 @@ void MainWindow::setupUI() {
     
     m_fpsLabel = new QLabel("FPS: --");
     m_bitrateLabel = new QLabel("Bitrate: --");
+    m_compositingLabel = new QLabel("Comp: --");
     m_durationLabel = new QLabel("Duration: 00:00:00");
     
     statusBar()->addWidget(m_statusLabel, 1);
     statusBar()->addPermanentWidget(m_fpsLabel);
     statusBar()->addPermanentWidget(m_bitrateLabel);
+    statusBar()->addPermanentWidget(m_compositingLabel);
     statusBar()->addPermanentWidget(m_durationLabel);
     
     // Setup stats timer
@@ -912,6 +914,10 @@ void MainWindow::updateStatistics() {
     // Render stats
     RenderStatistics renderStats = SceneManager::instance().statistics();
     m_fpsLabel->setText(QString("FPS: %1").arg(renderStats.currentFps, 0, 'f', 1));
+    m_compositingLabel->setText(
+        QString("Comp: %1 CPU %2%")
+            .arg(renderStats.compositingBackend)
+            .arg(renderStats.compositingCpuUsagePercent, 0, 'f', 1));
     
     const RecordingState recordingState = RecordingManager::instance().state();
     if (recordingState == RecordingState::Recording ||
