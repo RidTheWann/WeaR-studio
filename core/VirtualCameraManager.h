@@ -9,6 +9,11 @@
 #include <QMutex>
 #include <QString>
 
+#ifdef Q_OS_WIN
+#include <mfvirtualcamera.h>
+#include <wrl/client.h>
+#endif
+
 #include <atomic>
 #include <memory>
 
@@ -52,6 +57,11 @@ private:
     QImage m_latestFrame;
     QString m_lastError;
     std::atomic<bool> m_running{false};
+
+#ifdef Q_OS_WIN
+    Microsoft::WRL::ComPtr<IMFVirtualCamera> m_vcam;
+    bool m_comInitialized = false;
+#endif
 
     void setError(const QString& error);
 };
