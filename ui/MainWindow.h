@@ -64,6 +64,7 @@ private slots:
     void onTransitionTypeChanged(int index);
     void onTransitionDurationChanged(int durationMs);
     void onBrowseRecordingPath();
+    void onVirtualCameraClicked();
     void onSettingsClicked();
     
     // Updates
@@ -124,6 +125,9 @@ private:
     QPushButton* m_recordBtn = nullptr;
     QPushButton* m_pauseRecordBtn = nullptr;
     QLabel* m_recordDurationLabel = nullptr;
+
+    // Virtual camera output.
+    QPushButton* m_virtualCameraBtn = nullptr;
 
     // Scene transition controls.
     QComboBox* m_transitionTypeCombo = nullptr;
