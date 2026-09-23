@@ -106,6 +106,7 @@ int Scene::addItem(SceneItem* item) {
     connect(item, &SceneItem::transformChanged, this, &Scene::sceneChanged);
     connect(item, &SceneItem::visibilityChanged, this, &Scene::sceneChanged);
     connect(item, &SceneItem::sourceChanged, this, &Scene::sceneChanged);
+    connect(item, &SceneItem::sceneFilterChanged, this, &Scene::sceneChanged);
     
     m_items.append(item);
     int index = m_items.size() - 1;
