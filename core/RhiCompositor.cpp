@@ -303,8 +303,7 @@ public:
                 resources.srb->setBindings({
                     QRhiShaderResourceBinding::uniformBuffer(
                         0,
-                        QRhiShaderResourceBinding::VertexStage |
-                            QRhiShaderResourceBinding::FragmentStage,
+                        QRhiShaderResourceBinding::FragmentStage,
                         resources.uniformBuffer),
                     QRhiShaderResourceBinding::sampledTexture(
                         1,
