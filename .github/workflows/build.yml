@@ -60,6 +60,96 @@ jobs:
           cmake --build build --config Release --parallel 2>&1 | Tee-Object build-release.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Stage self-contained Windows package
+        shell: pwsh
+        run: |
+          ./packaging/windows/package-windows.ps1 -BuildDir "$env:GITHUB_WORKSPACE\\build" -FFmpegRoot "$env:FFMPEG_ROOT"
+
+          $stage = "$env:GITHUB_WORKSPACE\\build\\installer-stage"
+          $required = @(
+            "WeaR-Studio.exe",
+            "Qt6Core.dll",
+            "Qt6Gui.dll",
+            "Qt6Widgets.dll",
+            "Qt6Network.dll",
+            "Qt6Multimedia.dll"
+          )
+
+          foreach ($file in $required) {
+            if (-not (Test-Path (Join-Path $stage $file))) {
+              throw "Required packaged runtime file is missing: $file"
+            }
+          }
+
+          $ffmpegRuntime = Get-ChildItem -Path $stage -Filter "av*.dll" -File
+          if (-not $ffmpegRuntime) {
+            throw "No FFmpeg runtime DLLs were found in the package."
+          }
+
+          Write-Host "Package contains $($ffmpegRuntime.Count) FFmpeg DLL(s)."
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 7\\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            $iscc = Join-Path $env:ProgramFiles "Inno Setup 7\\ISCC.exe"
+          }
+          if (-not (Test-Path $iscc)) {
+            throw "ISCC.exe was not found after installing Inno Setup."
+          }
+          "ISCC_EXE=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $outputDir = "$env:GITHUB_WORKSPACE\\build\\installer"
+          New-Item -ItemType Directory -Force $outputDir | Out-Null
+
+          & "$env:ISCC_EXE" "/dSourceDir=$env:GITHUB_WORKSPACE\\build\\installer-stage" "/dOutputDir=$outputDir" "$env:GITHUB_WORKSPACE\\packaging\\windows\\WeaR-Studio.iss"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup failed with exit code $LASTEXITCODE"
+          }
+
+          $installer = Get-ChildItem $outputDir -Filter "*.exe" -File | Select-Object -First 1
+          if (-not $installer) {
+            throw "Installer executable was not produced."
+          }
+
+          Write-Host "Installer created: $($installer.FullName)"
+
+      - name: Clean-machine installer smoke test
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem "$env:GITHUB_WORKSPACE\\build\\installer" -Filter "*.exe" -File | Select-Object -First 1
+
+          $installDir = "$env:GITHUB_WORKSPACE\\clean-machine-install"
+          if (Test-Path $installDir) {
+            Remove-Item -Recurse -Force $installDir
+          }
+
+          & $installer.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/DIR=$installDir"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Silent installer failed with exit code $LASTEXITCODE"
+          }
+
+          $installedExe = Join-Path $installDir "WeaR-Studio.exe"
+          if (-not (Test-Path $installedExe)) {
+            throw "Installed executable was not found: $installedExe"
+          }
+
+          $env:PATH = "$env:SystemRoot\\System32;$env:SystemRoot"
+          & $installedExe --smoke-test 2>&1 | Tee-Object installed-smoke-test.log
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Installed package smoke test failed with exit code $LASTEXITCODE"
+          }
+
+          Write-Host "Clean-machine installer smoke test passed."
+
       - name: Run Debug tests
         shell: pwsh
         env:
@@ -126,6 +216,17 @@ jobs:
 
             Write-Host "ffprobe OK: $file | video=$($videoCodec -join '') audio=$($audioCodec -join '')"
           }
+
+      - name: Upload Windows installer
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wear-studio-windows-installer
+          path: |
+            build/installer/*.exe
+            installed-smoke-test.log
+            build/installer-stage/package-manifest.json
+          if-no-files-found: ignore
 
       - name: Upload RHI visual and benchmark artifacts
         if: always()
