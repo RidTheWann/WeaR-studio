@@ -156,3 +156,27 @@ target_include_directories(SceneTransitionTest
 target_compile_features(SceneTransitionTest PRIVATE cxx_std_20)
 
 add_test(NAME SceneTransitionTest COMMAND SceneTransitionTest)
+
+    
+if(WIN32)
+    add_executable(WebcamPluginDiscoveryTest
+        WebcamPluginDiscoveryTest.cpp
+    )
+
+    target_link_libraries(WebcamPluginDiscoveryTest
+        PRIVATE
+            core
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Widgets
+    )
+
+    target_include_directories(WebcamPluginDiscoveryTest
+        PRIVATE
+            ${CMAKE_SOURCE_DIR}/core
+    )
+
+    target_compile_features(WebcamPluginDiscoveryTest PRIVATE cxx_std_20)
+
+    add_test(NAME WebcamPluginDiscoveryTest COMMAND WebcamPluginDiscoveryTest)
+endif()

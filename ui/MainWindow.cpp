@@ -721,12 +721,47 @@ void MainWindow::onAddSource() {
             source->start();
         }
     } else {
-        // Try to get from plugin manager
+        // Try to get from plugin manager.
         for (ISource* s : PluginManager::instance().availableSources()) {
             if (s && s->name() == sourceType) {
                 source = s;
                 if (!source->isRunning()) {
-                    source->start();
+                    SourceConfig config = source->config();
+                    const QStringList devices = source->availableDevices();
+
+                    // Only sources that expose multiple device IDs get a
+                    // picker. Existing sources with no device list keep the
+                    // previous one-click behavior.
+                    if (devices.size() > 1) {
+                        bool deviceOk = false;
+                        const QString selectedId = QInputDialog::getItem(
+                            this,
+                            QStringLiteral("Select %1").arg(source->name()),
+                            QStringLiteral("Device:"),
+                            devices,
+                            devices.indexOf(config.deviceId) >= 0
+                                ? devices.indexOf(config.deviceId)
+                                : 0,
+                            false,
+                            &deviceOk);
+                        if (!deviceOk) {
+                            return;
+                        }
+                        config.deviceId = selectedId;
+                    } else if (devices.size() == 1 && config.deviceId.isEmpty()) {
+                        config.deviceId = devices.first();
+                    }
+
+                    if (!source->configure(config) || !source->start()) {
+                        const QString error = source->lastError();
+                        if (!error.isEmpty()) {
+                            QMessageBox::warning(
+                                this,
+                                QStringLiteral("Source Error"),
+                                error);
+                        }
+                        return;
+                    }
                 }
                 break;
             }
