@@ -30,6 +30,9 @@ set(CORE_SOURCES
     BuiltinRhiFilters.h
     RhiCompositor.cpp
     RhiCompositor.h
+    VirtualCameraProtocol.h
+    VirtualCameraManager.cpp
+    VirtualCameraManager.h
     PluginManager.cpp
     PluginManager.h
 )
@@ -144,6 +147,8 @@ if(WIN32)
             
             # Shell API (for display scaling)
             shcore
+            mfsensorgroup
+            advapi32
     )
     
     # Enable C++/WinRT compiler options
