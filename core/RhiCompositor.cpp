@@ -602,8 +602,8 @@ private:
         }
 
         destroyRhiResource(m_pipeline);
-        destroyRhiResource(m_renderPassDescriptor);
         destroyRhiResource(m_renderTarget);
+        destroyRhiResource(m_renderPassDescriptor);
         destroyRhiResource(m_outputTexture);
         m_outputSize = size;
 
