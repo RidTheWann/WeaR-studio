@@ -1039,12 +1039,6 @@ void MainWindow::updateStatistics() {
         m_durationLabel->setText("Duration: 00:00:00");
     }
 
-    AppDiagnostics::writeDiagnostic(
-        QString("stream_state=%1 reconnect_attempt=%2 reconnect_delay_ms=%3")
-            .arg(static_cast<int>(streamStats.state))
-            .arg(streamStats.reconnectAttempt)
-            .arg(streamStats.reconnectDelayMs));
-
 void MainWindow::updateStreamState() {
     StreamState state = StreamManager::instance().state();
     
