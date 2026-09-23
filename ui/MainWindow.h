@@ -66,7 +66,6 @@ private slots:
     void onApplyFilter();
     void onTransitionTypeChanged(int index);
     void onTransitionDurationChanged(int durationMs);
-    void onBrowseRecordingPath();
     void onSettingsClicked();
     void onSaveProfile();
     void onLoadProfile();
