@@ -62,11 +62,32 @@ jobs:
 
       - name: Run Debug tests
         shell: pwsh
-        run: ctest --test-dir build -C Debug --output-on-failure
+        env:
+          WEAR_RHI_TEST_OUTPUT_DIR: ${{ github.workspace }}\\build\\rhi-test-output
+          WEAR_REQUIRE_RHI_TEST: "0"
+        run: |
+          New-Item -ItemType Directory -Force "$env:WEAR_RHI_TEST_OUTPUT_DIR" | Out-Null
+          ctest --test-dir build -C Debug --output-on-failure -LE benchmark
 
       - name: Run Release tests
         shell: pwsh
-        run: ctest --test-dir build -C Release --output-on-failure
+        env:
+          WEAR_RHI_TEST_OUTPUT_DIR: ${{ github.workspace }}\\build\\rhi-test-output
+          WEAR_REQUIRE_RHI_TEST: "0"
+        run: |
+          New-Item -ItemType Directory -Force "$env:WEAR_RHI_TEST_OUTPUT_DIR" | Out-Null
+          ctest --test-dir build -C Release --output-on-failure -LE benchmark
+
+      - name: Measure compositing CPU usage
+        shell: pwsh
+        env:
+          WEAR_BENCHMARK_WIDTH: "1920"
+          WEAR_BENCHMARK_HEIGHT: "1080"
+          WEAR_BENCHMARK_LAYERS: "4"
+          WEAR_BENCHMARK_FRAMES: "60"
+        run: |
+          ctest --test-dir build -C Release -V -R CompositingBenchmark 2>&1 | Tee-Object compositing-benchmark.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify recording outputs with ffprobe
         shell: pwsh
