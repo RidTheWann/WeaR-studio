@@ -51,6 +51,9 @@ public:
     QWidget* settingsWidget() override;
     QString lastError() const override;
 
+    // Called by the CEF OSR render callback. Thread-safe latest-frame handoff.
+    void publishFrame(const QImage& frame, int64_t timestamp);
+
 private:
     class Impl;
     std::unique_ptr<Impl> m_impl;
@@ -67,7 +70,6 @@ private:
     QImage m_currentFrame;
     int64_t m_currentTimestamp = 0;
 
-    void publishFrame(const QImage& frame, int64_t timestamp);
     void setError(const QString& error);
 
     Q_DISABLE_COPY_MOVE(BrowserSourcePlugin)
