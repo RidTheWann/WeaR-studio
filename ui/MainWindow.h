@@ -8,6 +8,8 @@
 #include <QTimer>
 #include <memory>
 
+#include <SceneTransition.h>
+
 class QListWidget;
 class QListWidgetItem;
 class QLabel;
@@ -59,6 +61,8 @@ private slots:
     void onRecordClicked();
     void onPauseRecordingClicked();
     void onApplyFilter();
+    void onTransitionTypeChanged(int index);
+    void onTransitionDurationChanged(int durationMs);
     void onBrowseRecordingPath();
     void onSettingsClicked();
     
@@ -120,6 +124,10 @@ private:
     QPushButton* m_recordBtn = nullptr;
     QPushButton* m_pauseRecordBtn = nullptr;
     QLabel* m_recordDurationLabel = nullptr;
+
+    // Scene transition controls.
+    QComboBox* m_transitionTypeCombo = nullptr;
+    QSpinBox* m_transitionDurationSpin = nullptr;
 
     // Basic built-in video filter controls.
     QComboBox* m_filterCombo = nullptr;

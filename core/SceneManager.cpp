@@ -8,10 +8,12 @@
 #include "RecordingManager.h"
 #include "AudioMixer.h"
 #include "RhiCompositor.h"
+#include "SceneTransition.h"
 
 #include <QDebug>
 #include <QDateTime>
 #include <QPainter>
+#include <algorithm>
 
 #ifdef Q_OS_WIN
 #  include <windows.h>
@@ -198,6 +200,7 @@ bool SceneManager::removeScene(Scene* scene) {
     
     // If active scene was removed, switch to another
     if (m_activeScene == scene) {
+        cancelSceneTransition();
         m_activeScene = m_scenes.isEmpty() ? nullptr : m_scenes.first();
         emit activeSceneChanged(m_activeScene);
     }
@@ -222,24 +225,101 @@ int SceneManager::sceneCount() const {
     return m_scenes.size();
 }
 
+void SceneManager::setTransitionType(SceneTransitionType type) {
+    m_transitionType = type;
+}
+
+void SceneManager::setTransitionDuration(SceneTransitionType type, int durationMs) {
+    const int index = static_cast<int>(type);
+    if (index < 0 || index >= static_cast<int>(m_transitionDurationsMs.size())) {
+        return;
+    }
+
+    m_transitionDurationsMs[static_cast<size_t>(index)] =
+        type == SceneTransitionType::Cut
+            ? 0
+            : std::clamp(durationMs, 0, 10000);
+}
+
+int SceneManager::transitionDuration(SceneTransitionType type) const {
+    const int index = static_cast<int>(type);
+    if (index < 0 || index >= static_cast<int>(m_transitionDurationsMs.size())) {
+        return 0;
+    }
+    return m_transitionDurationsMs[static_cast<size_t>(index)];
+}
+
+double SceneManager::transitionProgress() const {
+    if (!m_transition.active || m_transition.durationMs <= 0) {
+        return m_transition.active ? 1.0 : 0.0;
+    }
+
+    return std::clamp(
+        static_cast<double>(m_transition.clock.elapsed()) /
+            static_cast<double>(m_transition.durationMs),
+        0.0,
+        1.0);
+}
+
+void SceneManager::cancelSceneTransition() {
+    m_transition.active = false;
+    m_transition.durationMs = 0;
+    m_transition.fromFrame = QImage();
+    m_transition.targetScene = nullptr;
+}
+
 void SceneManager::setActiveScene(Scene* scene) {
-    if (m_activeScene != scene) {
+    if (m_activeScene == scene) {
+        return;
+    }
+
+    {
         QMutexLocker lock(&m_sceneMutex);
-        
         if (scene && !m_scenes.contains(scene)) {
             qWarning() << "Scene not in manager";
             return;
         }
-        
-        m_activeScene = scene;
-        
-        lock.unlock();
-        
-        emit activeSceneChanged(scene);
-        
-        qDebug() << "Active scene changed to:" 
-                 << (scene ? scene->name() : "none");
     }
+
+    Scene* previousScene = m_activeScene;
+    const SceneTransitionType requestedType = m_transitionType;
+    const int requestedDuration = transitionDuration(requestedType);
+
+    if (previousScene &&
+        scene &&
+        SceneTransition::isAnimated(requestedType) &&
+        requestedDuration > 0) {
+        QImage outgoingFrame;
+        {
+            QMutexLocker lock(&m_frameMutex);
+            outgoingFrame = m_lastFrame.copy();
+        }
+
+        if (outgoingFrame.isNull()) {
+            outgoingFrame = previousScene->render();
+        }
+
+        if (!outgoingFrame.isNull()) {
+            m_transition.active = true;
+            m_transition.type = requestedType;
+            m_transition.durationMs = requestedDuration;
+            m_transition.fromFrame = std::move(outgoingFrame);
+            m_transition.targetScene = scene;
+            m_transition.clock.restart();
+        } else {
+            cancelSceneTransition();
+        }
+    } else {
+        cancelSceneTransition();
+    }
+
+    m_activeScene = scene;
+    emit activeSceneChanged(scene);
+
+    qDebug() << "Active scene changed to:"
+             << (scene ? scene->name() : "none")
+             << "transition=" << SceneTransition::typeName(requestedType)
+             << "durationMs=" << requestedDuration;
 }
 
 Scene* SceneManager::sceneByName(const QString& name) const {
@@ -347,6 +427,8 @@ QImage SceneManager::renderFrame() {
         if (!usedRhi) {
             frame = renderFrameQPainter();
         }
+
+        frame = applySceneTransition(frame);
     }
 
     const double wallTimeMs = compositingTimer.nsecsElapsed() / 1000000.0;
@@ -358,6 +440,24 @@ QImage SceneManager::renderFrame() {
 
     updateCompositingStats(wallTimeMs, cpuTimeMs, backendName);
     return frame;
+}
+
+QImage SceneManager::applySceneTransition(const QImage& incomingFrame) {
+    if (!m_transition.active || incomingFrame.isNull()) {
+        return incomingFrame;
+    }
+
+    const double progress = transitionProgress();
+    if (progress >= 1.0) {
+        cancelSceneTransition();
+        return incomingFrame;
+    }
+
+    return SceneTransition::compose(
+        m_transition.fromFrame,
+        incomingFrame,
+        m_transition.type,
+        progress);
 }
 
 QImage SceneManager::renderFrameQPainter() {

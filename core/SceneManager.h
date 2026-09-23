@@ -187,7 +187,39 @@ public:
     [[nodiscard]] Scene* activeScene() const { return m_activeScene; }
     
     /**
-     * @brief Set active scene
+     * @brief Set the transition type used for subsequent scene changes.
+     */
+    void setTransitionType(SceneTransitionType type);
+
+    /**
+     * @brief Get the transition type used for subsequent scene changes.
+     */
+    [[nodiscard]] SceneTransitionType transitionType() const { return m_transitionType; }
+
+    /**
+     * @brief Configure the duration for one transition type.
+     * @param type Transition type
+     * @param durationMs Duration in milliseconds. Cut is always immediate.
+     */
+    void setTransitionDuration(SceneTransitionType type, int durationMs);
+
+    /**
+     * @brief Get the configured duration for one transition type.
+     */
+    [[nodiscard]] int transitionDuration(SceneTransitionType type) const;
+
+    /**
+     * @brief Whether an animated scene transition is currently running.
+     */
+    [[nodiscard]] bool isTransitionActive() const { return m_transition.active; }
+
+    /**
+     * @brief Current transition progress in the range [0, 1].
+     */
+    [[nodiscard]] double transitionProgress() const;
+
+    /**
+     * @brief Set active scene using the configured transition.
      */
     void setActiveScene(Scene* scene);
     
@@ -285,6 +317,8 @@ private:
     void outputToEncoder(const QImage& frame);
     void outputToRecorder(const QImage& frame);
     void outputToPreview(const QImage& frame);
+    QImage applySceneTransition(const QImage& incomingFrame);
+    void cancelSceneTransition();
     
     // Scenes
     QList<Scene*> m_scenes;
@@ -316,6 +350,20 @@ private:
     QList<double> m_renderTimes;
     QList<double> m_compositingWallTimes;
     QList<double> m_compositingCpuTimes;
+
+    // Scene transition settings/state. The transition clock is monotonic and
+    // advances only when renderFrame() is called, so it cannot block encoder
+    // or stream delivery with sleeps or auxiliary timers.
+    SceneTransitionType m_transitionType = SceneTransitionType::Fade;
+    std::array<int, 3> m_transitionDurationsMs{0, 300, 300};
+    struct ActiveTransition {
+        bool active = false;
+        SceneTransitionType type = SceneTransitionType::Cut;
+        int durationMs = 0;
+        QElapsedTimer clock;
+        QImage fromFrame;
+        Scene* targetScene = nullptr;
+    } m_transition;
 
     // GPU compositor. A failed/unsupported RHI path never prevents the
     // established QPainter renderer from producing a frame.

@@ -17,6 +17,8 @@ set(CORE_SOURCES
     Scene.h
     SceneItem.cpp
     SceneItem.h
+    SceneTransition.cpp
+    SceneTransition.h
     AudioCaptureSource.cpp
     AudioCaptureSource.h
     AudioMixer.cpp

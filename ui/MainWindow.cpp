@@ -40,6 +40,7 @@
 #include <QMessageBox>
 #include <QInputDialog>
 #include <QDebug>
+#include <QSignalBlocker>
 
 namespace WeaR {
 
@@ -355,6 +356,33 @@ void MainWindow::createControlsDock() {
 
     layout->addWidget(recordingGroup);
 
+    // Scene transition settings. Duration is persisted independently for each
+    // transition type; selecting a type restores its configured value.
+    QGroupBox* transitionGroup = new QGroupBox("Scene Transition");
+    QVBoxLayout* transitionLayout = new QVBoxLayout(transitionGroup);
+
+    QHBoxLayout* transitionTypeLayout = new QHBoxLayout();
+    transitionTypeLayout->addWidget(new QLabel("Type:"));
+    m_transitionTypeCombo = new QComboBox();
+    m_transitionTypeCombo->addItem("Cut");
+    m_transitionTypeCombo->addItem("Fade");
+    m_transitionTypeCombo->addItem("Slide");
+    transitionTypeLayout->addWidget(m_transitionTypeCombo, 1);
+    transitionLayout->addLayout(transitionTypeLayout);
+
+    QHBoxLayout* transitionDurationLayout = new QHBoxLayout();
+    transitionDurationLayout->addWidget(new QLabel("Duration:"));
+    m_transitionDurationSpin = new QSpinBox();
+    m_transitionDurationSpin->setRange(0, 10000);
+    m_transitionDurationSpin->setSingleStep(50);
+    m_transitionDurationSpin->setSuffix(" ms");
+    m_transitionDurationSpin->setValue(
+        SceneManager::instance().transitionDuration(SceneTransitionType::Fade));
+    transitionDurationLayout->addWidget(m_transitionDurationSpin, 1);
+    transitionLayout->addLayout(transitionDurationLayout);
+
+    layout->addWidget(transitionGroup);
+
 
     // Basic GPU filter controls
     QGroupBox* filterGroup = new QGroupBox("Video Filter");
@@ -424,6 +452,10 @@ void MainWindow::setupConnections() {
             this, &MainWindow::onBrowseRecordingPath);
     connect(m_applyFilterBtn, &QPushButton::clicked,
             this, &MainWindow::onApplyFilter);
+    connect(m_transitionTypeCombo, &QComboBox::currentIndexChanged,
+            this, &MainWindow::onTransitionTypeChanged);
+    connect(m_transitionDurationSpin, &QSpinBox::valueChanged,
+            this, &MainWindow::onTransitionDurationChanged);
 
     connect(&RecordingManager::instance(), &RecordingManager::stateChanged,
             this, &MainWindow::updateRecordingState);
@@ -439,6 +471,11 @@ void MainWindow::setupConnections() {
 }
 
 void MainWindow::initializeManagers() {
+    if (m_transitionTypeCombo) {
+        m_transitionTypeCombo->setCurrentIndex(
+            static_cast<int>(SceneManager::instance().transitionType()));
+    }
+
     // Initialize capture manager
     CaptureManager::instance().initialize();
     
@@ -571,6 +608,35 @@ void MainWindow::onSourceSelected(
     } else {
         m_filterCombo->setCurrentIndex(0);
     }
+}
+
+void MainWindow::onTransitionTypeChanged(int index) {
+    if (!m_transitionTypeCombo || !m_transitionDurationSpin ||
+        index < 0 || index > 2) {
+        return;
+    }
+
+    const auto type = static_cast<SceneTransitionType>(index);
+    auto& manager = SceneManager::instance();
+    manager.setTransitionType(type);
+
+    const QSignalBlocker blocker(m_transitionDurationSpin);
+    m_transitionDurationSpin->setValue(manager.transitionDuration(type));
+}
+
+void MainWindow::onTransitionDurationChanged(int durationMs) {
+    if (!m_transitionTypeCombo) {
+        return;
+    }
+
+    const int index = m_transitionTypeCombo->currentIndex();
+    if (index < 0 || index > 2) {
+        return;
+    }
+
+    SceneManager::instance().setTransitionDuration(
+        static_cast<SceneTransitionType>(index),
+        durationMs);
 }
 
 void MainWindow::onApplyFilter() {
