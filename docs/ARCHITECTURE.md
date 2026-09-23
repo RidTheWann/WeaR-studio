@@ -11,11 +11,12 @@
 1. [System Overview](#system-overview)
 2. [Data Flow Pipeline](#data-flow-pipeline)
 3. [Core Managers](#core-managers)
-4. [Plugin System](#plugin-system)
-5. [User Interface](#user-interface)
-6. [Build & Run Instructions](#build--run-instructions)
-7. [Plugin Development Guide](#plugin-development-guide)
-8. [Phase 5 Roadmap](#phase-5-roadmap)
+4. [Recording / Streaming Independence](#recording--streaming-independence)
+5. [Plugin System](#plugin-system)
+6. [User Interface](#user-interface)
+7. [Build & Run Instructions](#build--run-instructions)
+8. [Plugin Development Guide](#plugin-development-guide)
+9. [Phase 5 Roadmap](#phase-5-roadmap)
 
 ---
 
