@@ -3,9 +3,13 @@
 #include "EncoderManager.h"
 #include "RecordingManager.h"
 #include "StreamManager.h"
-#include "GlobalHotkeyManager.h"
 
+#include <QColor>
 #include <QJsonDocument>
+#include <QPointF>
+#include <QRectF>
+#include <QSizeF>
+#include <QVariant>
 #include <QJsonObject>
 #include <QString>
 
@@ -15,6 +19,7 @@ namespace WeaR {
 
 class Scene;
 class SceneItem;
+struct ItemTransform;
 class SceneManager;
 class ISource;
 class IFilter;
