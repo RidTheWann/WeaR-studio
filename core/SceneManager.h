@@ -12,6 +12,7 @@
 #include <QTimer>
 #include <QImage>
 #include <QElapsedTimer>
+#include <QString>
 
 #include <memory>
 #include <atomic>
@@ -37,6 +38,15 @@ struct RenderStatistics {
     double averageRenderTimeMs = 0.0; ///< Average render time
     double targetFps = 60.0;        ///< Target FPS
     int64_t droppedFrames = 0;      ///< Frames dropped due to timing
+
+    // Composition-specific telemetry.
+    double compositingWallTimeMs = 0.0;
+    double compositingCpuTimeMs = 0.0;
+    double compositingCpuUsagePercent = 0.0;
+    QString compositingBackend = QStringLiteral("QPainter");
+    QString rhiBackend;
+    int64_t rhiFrames = 0;
+    int64_t qPainterFrames = 0;
 };
 
 /**
@@ -75,6 +85,8 @@ using PreviewFrameCallback = std::function<void(const QImage& frame)>;
  *   scene.startRenderLoop();
  * @endcode
  */
+class RhiCompositor;
+
 class SceneManager : public QObject {
     Q_OBJECT
 
@@ -265,6 +277,11 @@ private:
     
     // Render implementation
     void doRender();
+    QImage renderFrameQPainter();
+    void updateCompositingStats(
+        double wallTimeMs,
+        double cpuTimeMs,
+        const QString& backendName);
     void outputToEncoder(const QImage& frame);
     void outputToRecorder(const QImage& frame);
     void outputToPreview(const QImage& frame);
@@ -297,6 +314,13 @@ private:
     RenderStatistics m_stats;
     mutable QMutex m_statsMutex;
     QList<double> m_renderTimes;
+    QList<double> m_compositingWallTimes;
+    QList<double> m_compositingCpuTimes;
+
+    // GPU compositor. A failed/unsupported RHI path never prevents the
+    // established QPainter renderer from producing a frame.
+    std::unique_ptr<RhiCompositor> m_rhiCompositor;
+    bool m_loggedRhiFallback = false;
 };
 
 } // namespace WeaR

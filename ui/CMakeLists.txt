@@ -24,6 +24,18 @@ add_executable(WeaRStudio WIN32
 # ==============================================================================
 # Qt6 Dependencies
 # ==============================================================================
+# ==============================================================================
+# Precompile cross-backend RHI shaders into the application executable
+# ==============================================================================
+qt_add_shaders(WeaRStudio "wear_rhi_shaders"
+    PREFIX "/wear/rhi"
+    PRECOMPILE
+    OPTIMIZED
+    FILES
+        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.vert
+        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.frag
+)
+
 target_link_libraries(WeaRStudio
     PRIVATE
         # Core library

@@ -23,6 +23,11 @@ set(CORE_SOURCES
     AudioMixer.h
     RecordingManager.cpp
     RecordingManager.h
+    IRhiFilter.h
+    BuiltinRhiFilters.cpp
+    BuiltinRhiFilters.h
+    RhiCompositor.cpp
+    RhiCompositor.h
     PluginManager.cpp
     PluginManager.h
 )
@@ -65,6 +70,7 @@ target_link_libraries(core
         Qt6::Multimedia
         Qt6::OpenGL
         Qt6::OpenGLWidgets
+        Qt6::GuiPrivate
 )
 
 # ==============================================================================

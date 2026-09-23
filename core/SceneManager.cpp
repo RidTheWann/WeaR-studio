@@ -7,10 +7,66 @@
 #include "EncoderManager.h"
 #include "RecordingManager.h"
 #include "AudioMixer.h"
+#include "RhiCompositor.h"
 
 #include <QDebug>
 #include <QDateTime>
 #include <QPainter>
+
+#ifdef Q_OS_WIN
+#  include <windows.h>
+#elif defined(Q_OS_UNIX)
+#  include <time.h>
+#endif
+
+
+namespace {
+
+qint64 currentThreadCpuTimeNsecs() {
+#ifdef Q_OS_WIN
+    FILETIME creationTime{};
+    FILETIME exitTime{};
+    FILETIME kernelTime{};
+    FILETIME userTime{};
+    if (!GetThreadTimes(
+            GetCurrentThread(),
+            &creationTime,
+            &exitTime,
+            &kernelTime,
+            &userTime)) {
+        return -1;
+    }
+
+    ULARGE_INTEGER kernel{};
+    kernel.LowPart = kernelTime.dwLowDateTime;
+    kernel.HighPart = kernelTime.dwHighDateTime;
+
+    ULARGE_INTEGER user{};
+    user.LowPart = userTime.dwLowDateTime;
+    user.HighPart = userTime.dwHighDateTime;
+
+    // FILETIME uses 100 ns units.
+    return static_cast<qint64>((kernel.QuadPart + user.QuadPart) * 100ULL);
+#elif defined(Q_OS_UNIX)
+    timespec ts{};
+    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) != 0) {
+        return -1;
+    }
+
+    return static_cast<qint64>(ts.tv_sec) * 1000000000LL +
+           static_cast<qint64>(ts.tv_nsec);
+#else
+    return -1;
+#endif
+}
+
+QString compositorModeFromEnvironment() {
+    return qEnvironmentVariable(
+        "WEAR_COMPOSITOR",
+        QStringLiteral("auto")).trimmed().toLower();
+}
+
+} // namespace
 
 namespace WeaR {
 
@@ -32,6 +88,10 @@ SceneManager::SceneManager(QObject* parent)
     
     // Initialize frame timer
     m_frameTimer.start();
+
+    // RHI is initialized lazily on the render thread. This avoids making
+    // application startup dependent on a particular graphics backend.
+    m_rhiCompositor = std::make_unique<RhiCompositor>();
     
     // Create default scene
     createScene(QStringLiteral("Scene 1"));
@@ -222,6 +282,8 @@ bool SceneManager::startRenderLoop() {
         m_stats = RenderStatistics();
         m_stats.targetFps = m_targetFps;
         m_renderTimes.clear();
+        m_compositingWallTimes.clear();
+        m_compositingCpuTimes.clear();
     }
     
     emit renderLoopStarted();
@@ -247,14 +309,118 @@ void SceneManager::onRenderTick() {
 }
 
 QImage SceneManager::renderFrame() {
+    QElapsedTimer compositingTimer;
+    compositingTimer.start();
+    const qint64 cpuStart = currentThreadCpuTimeNsecs();
+
+    QImage frame;
+    QString backendName = QStringLiteral("QPainter");
+
     if (!m_activeScene) {
-        // Return black frame
-        QImage frame(m_outputResolution, QImage::Format_ARGB32_Premultiplied);
+        frame = QImage(
+            m_outputResolution,
+            QImage::Format_ARGB32_Premultiplied);
+        frame.fill(Qt::black);
+    } else {
+        const QString mode = compositorModeFromEnvironment();
+        const bool forceQPainter = mode == QStringLiteral("qpainter");
+        bool usedRhi = false;
+
+        if (!forceQPainter && m_rhiCompositor) {
+            QImage rhiFrame;
+            if (m_rhiCompositor->compose(
+                    *m_activeScene,
+                    m_outputResolution,
+                    rhiFrame)) {
+                frame = std::move(rhiFrame);
+                backendName = QStringLiteral("RHI/%1")
+                    .arg(m_rhiCompositor->backendName());
+                usedRhi = true;
+                m_loggedRhiFallback = false;
+            } else if (!m_loggedRhiFallback) {
+                qWarning() << "RHI compositor unavailable; falling back to QPainter:"
+                           << m_rhiCompositor->lastError();
+                m_loggedRhiFallback = true;
+            }
+        }
+
+        if (!usedRhi) {
+            frame = renderFrameQPainter();
+        }
+    }
+
+    const double wallTimeMs = compositingTimer.nsecsElapsed() / 1000000.0;
+    const qint64 cpuEnd = currentThreadCpuTimeNsecs();
+    const double cpuTimeMs =
+        cpuStart >= 0 && cpuEnd >= cpuStart
+            ? static_cast<double>(cpuEnd - cpuStart) / 1000000.0
+            : wallTimeMs;
+
+    updateCompositingStats(wallTimeMs, cpuTimeMs, backendName);
+    return frame;
+}
+
+QImage SceneManager::renderFrameQPainter() {
+    if (!m_activeScene) {
+        QImage frame(
+            m_outputResolution,
+            QImage::Format_ARGB32_Premultiplied);
         frame.fill(Qt::black);
         return frame;
     }
-    
+
     return m_activeScene->render();
+}
+
+void SceneManager::updateCompositingStats(
+    double wallTimeMs,
+    double cpuTimeMs,
+    const QString& backendName) {
+    QMutexLocker lock(&m_statsMutex);
+
+    m_compositingWallTimes.append(wallTimeMs);
+    m_compositingCpuTimes.append(cpuTimeMs);
+
+    constexpr int kWindow = 60;
+    while (m_compositingWallTimes.size() > kWindow) {
+        m_compositingWallTimes.removeFirst();
+    }
+    while (m_compositingCpuTimes.size() > kWindow) {
+        m_compositingCpuTimes.removeFirst();
+    }
+
+    double wallSum = 0.0;
+    for (double value : m_compositingWallTimes) {
+        wallSum += value;
+    }
+
+    double cpuSum = 0.0;
+    for (double value : m_compositingCpuTimes) {
+        cpuSum += value;
+    }
+
+    m_stats.compositingWallTimeMs =
+        m_compositingWallTimes.isEmpty()
+            ? 0.0
+            : wallSum / m_compositingWallTimes.size();
+
+    m_stats.compositingCpuTimeMs =
+        m_compositingCpuTimes.isEmpty()
+            ? 0.0
+            : cpuSum / m_compositingCpuTimes.size();
+
+    m_stats.compositingCpuUsagePercent =
+        wallSum > 0.0
+            ? (cpuSum / wallSum) * 100.0
+            : 0.0;
+
+    m_stats.compositingBackend = backendName;
+    if (backendName == QStringLiteral("QPainter")) {
+        ++m_stats.qPainterFrames;
+    } else {
+        ++m_stats.rhiFrames;
+        m_stats.rhiBackend = backendName;
+    }
 }
 
 QImage SceneManager::lastFrame() const {

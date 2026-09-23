@@ -14,6 +14,7 @@
 #include <CaptureManager.h>
 #include <AudioMixer.h>
 #include <AudioCaptureSource.h>
+#include <BuiltinRhiFilters.h>
 #include <PluginManager.h>
 #include <Scene.h>
 #include <SceneItem.h>
@@ -67,6 +68,17 @@ MainWindow::~MainWindow() {
     // Stop scene rendering
     SceneManager::instance().stopRenderLoop();
 
+    // Release built-in filters after scene items stop referencing them.
+    if (m_chromaKeyFilter) {
+        m_chromaKeyFilter->shutdown();
+    }
+    if (m_gaussianBlurFilter) {
+        m_gaussianBlurFilter->shutdown();
+    }
+    if (m_colorCorrectionFilter) {
+        m_colorCorrectionFilter->shutdown();
+    }
+
     // Stop audio sources
     if (m_desktopAudio) {
         m_desktopAudio->stop();
@@ -87,11 +99,13 @@ void MainWindow::setupUI() {
     
     m_fpsLabel = new QLabel("FPS: --");
     m_bitrateLabel = new QLabel("Bitrate: --");
+    m_compositingLabel = new QLabel("Comp: --");
     m_durationLabel = new QLabel("Duration: 00:00:00");
     
     statusBar()->addWidget(m_statusLabel, 1);
     statusBar()->addPermanentWidget(m_fpsLabel);
     statusBar()->addPermanentWidget(m_bitrateLabel);
+    statusBar()->addPermanentWidget(m_compositingLabel);
     statusBar()->addPermanentWidget(m_durationLabel);
     
     // Setup stats timer
@@ -341,6 +355,24 @@ void MainWindow::createControlsDock() {
 
     layout->addWidget(recordingGroup);
 
+
+    // Basic GPU filter controls
+    QGroupBox* filterGroup = new QGroupBox("Video Filter");
+    QHBoxLayout* filterLayout = new QHBoxLayout(filterGroup);
+
+    m_filterCombo = new QComboBox();
+    m_filterCombo->addItem("None");
+    m_filterCombo->addItem("Chroma Key");
+    m_filterCombo->addItem("Gaussian Blur");
+    m_filterCombo->addItem("Color Correction");
+
+    m_applyFilterBtn = new QPushButton("Apply");
+    m_applyFilterBtn->setMinimumHeight(30);
+
+    filterLayout->addWidget(m_filterCombo, 1);
+    filterLayout->addWidget(m_applyFilterBtn);
+    layout->addWidget(filterGroup);
+
     // Action buttons
     QGroupBox* actionsGroup = new QGroupBox("Actions");
     QVBoxLayout* actionsLayout = new QVBoxLayout(actionsGroup);
@@ -390,6 +422,8 @@ void MainWindow::setupConnections() {
             this, &MainWindow::onPauseRecordingClicked);
     connect(m_recordBrowseBtn, &QPushButton::clicked,
             this, &MainWindow::onBrowseRecordingPath);
+    connect(m_applyFilterBtn, &QPushButton::clicked,
+            this, &MainWindow::onApplyFilter);
 
     connect(&RecordingManager::instance(), &RecordingManager::stateChanged,
             this, &MainWindow::updateRecordingState);
@@ -423,6 +457,16 @@ void MainWindow::initializeManagers() {
     encSettings.audioChannels = 2;
     encSettings.audioBitrate = 160;
     EncoderManager::instance().configure(encSettings);
+
+    // Initialize built-in GPU-capable filters
+    m_chromaKeyFilter = std::make_unique<ChromaKeyFilter>();
+    m_chromaKeyFilter->initialize();
+
+    m_gaussianBlurFilter = std::make_unique<GaussianBlurFilter>();
+    m_gaussianBlurFilter->initialize();
+
+    m_colorCorrectionFilter = std::make_unique<ColorCorrectionFilter>();
+    m_colorCorrectionFilter->initialize();
 
     // Initialize audio capture sources
     m_desktopAudio = std::make_shared<DesktopAudioSource>();
@@ -501,9 +545,67 @@ void MainWindow::onRemoveScene() {
     }
 }
 
-void MainWindow::onSourceSelected(QListWidgetItem* current, QListWidgetItem* /*previous*/) {
-    Q_UNUSED(current);
-    // Could highlight/select the source in the scene
+void MainWindow::onSourceSelected(
+    QListWidgetItem* current,
+    QListWidgetItem* /*previous*/) {
+    if (!current || !m_filterCombo) {
+        return;
+    }
+
+    Scene* activeScene = SceneManager::instance().activeScene();
+    SceneItem* item = activeScene
+        ? activeScene->itemByName(current->text())
+        : nullptr;
+
+    if (!item || !item->filter()) {
+        m_filterCombo->setCurrentIndex(0);
+        return;
+    }
+
+    if (item->filter() == m_chromaKeyFilter.get()) {
+        m_filterCombo->setCurrentIndex(1);
+    } else if (item->filter() == m_gaussianBlurFilter.get()) {
+        m_filterCombo->setCurrentIndex(2);
+    } else if (item->filter() == m_colorCorrectionFilter.get()) {
+        m_filterCombo->setCurrentIndex(3);
+    } else {
+        m_filterCombo->setCurrentIndex(0);
+    }
+}
+
+void MainWindow::onApplyFilter() {
+    if (!m_filterCombo) {
+        return;
+    }
+
+    QListWidgetItem* current = m_sourcesList->currentItem();
+    Scene* activeScene = SceneManager::instance().activeScene();
+    if (!current || !activeScene) {
+        return;
+    }
+
+    SceneItem* item = activeScene->itemByName(current->text());
+    if (!item) {
+        return;
+    }
+
+    IFilter* filter = nullptr;
+    switch (m_filterCombo->currentIndex()) {
+        case 1:
+            filter = m_chromaKeyFilter.get();
+            break;
+        case 2:
+            filter = m_gaussianBlurFilter.get();
+            break;
+        case 3:
+            filter = m_colorCorrectionFilter.get();
+            break;
+        default:
+            filter = nullptr;
+            break;
+    }
+
+    item->setFilter(filter);
 }
 
 void MainWindow::onAddSource() {
@@ -812,6 +914,10 @@ void MainWindow::updateStatistics() {
     // Render stats
     RenderStatistics renderStats = SceneManager::instance().statistics();
     m_fpsLabel->setText(QString("FPS: %1").arg(renderStats.currentFps, 0, 'f', 1));
+    m_compositingLabel->setText(
+        QString("Comp: %1 CPU %2%")
+            .arg(renderStats.compositingBackend)
+            .arg(renderStats.compositingCpuUsagePercent, 0, 'f', 1));
     
     const RecordingState recordingState = RecordingManager::instance().state();
     if (recordingState == RecordingState::Recording ||

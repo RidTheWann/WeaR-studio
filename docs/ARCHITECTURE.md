@@ -1,7 +1,7 @@
 # WeaR Studio Architecture
 
 > **Version:** 0.1
-> **Last Updated:** 2026-09-23
+> **Last Updated:** 2026-09-24
 > **Platform:** Windows 10/11 (64-bit)
 
 ---
@@ -162,6 +162,21 @@ capture.start();
 VideoFrame frame = capture.captureVideoFrame();
 ```
 
+### RhiCompositor
+
+**Files:** `core/RhiCompositor.h/.cpp`, `shaders/rhi_composite.vert`, `shaders/rhi_composite.frag`
+
+**Purpose:** GPU-first offscreen composition using Qt QRhi while preserving the established QPainter renderer as a safety fallback.
+
+**Backend strategy:**
+- Windows: D3D11 → Vulkan → OpenGL when runtime selection is `auto`
+- macOS/iOS: Metal → Vulkan → OpenGL
+- Other platforms: Vulkan → OpenGL
+- `WEAR_RHI_BACKEND=d3d11|vulkan|metal|opengl` can request a backend explicitly
+- `WEAR_COMPOSITOR=qpainter` forces the legacy raster path; any RHI failure otherwise falls back automatically to QPainter
+
+QRhi is Qt's accelerated 2D/3D graphics abstraction. It has limited compatibility guarantees and is therefore isolated behind this component. The current project targets the Qt 6.10 API set.
+
 ### SceneManager
 
 **Files:** `core/SceneManager.h/.cpp`, `core/Scene.h/.cpp`, `core/SceneItem.h/.cpp`
@@ -173,7 +188,9 @@ VideoFrame frame = capture.captureVideoFrame();
 - Layer-based composition (SceneItem)
 - Transform properties (position, scale, rotation, opacity)
 - Preview callback for UI
-- Encoder output integration
+- Encoder and RecordingManager output integration
+- GPU-first composition through RhiCompositor with QPainter fallback
+- Runtime composition telemetry: backend, CPU ms/frame, CPU budget percentage
 
 ```cpp
 // Usage
@@ -260,6 +277,18 @@ recorder.configure(settings);
 recorder.startRecording();
 ```
 
+### Built-in RHI Filters
+
+**File:** `core/BuiltinRhiFilters.h/.cpp`
+
+The built-in filters implement the existing `IFilter` contract and additionally implement `IRhiFilter` for direct GPU evaluation:
+
+- **Chroma Key** — key color, threshold, and softness
+- **Gaussian Blur** — 3×3 Gaussian kernel with configurable sample radius
+- **Color Correction** — brightness, contrast, saturation, and gamma
+
+`SceneItem::setFilter()` attaches one filter per item. GPU-capable filters execute in the RHI fragment shader; filters without an RHI implementation or with GPU disabled are evaluated by `IFilter::processVideo()` before upload. The QPainter fallback uses the same CPU filter implementations, keeping the feature available when RHI initialization fails.
+
 ### PluginManager
 
 **File:** `core/PluginManager.h/.cpp`
@@ -316,6 +345,16 @@ AudioFrame mixed = mixer.mixTracks(800);
 - Thread-safe FIFO audio buffer
 
 ---
+
+## RHI Composition and Measurement
+
+The GPU path renders the active scene to a QRhi RGBA8 offscreen target, then performs one readback to the existing QImage-based encoder/recording boundary. This is the current migration bridge: composition itself is GPU-driven while the downstream FFmpeg APIs remain unchanged.
+
+The benchmark target `CompositingBenchmark` runs the same synthetic scene through `Scene::render()` and `RhiCompositor::compose()` at identical resolution, layer count, and 60 FPS target. It reports CPU milliseconds per frame, wall-clock milliseconds per frame, estimated CPU budget consumed by composition at 60 FPS, effective processing FPS, and `CPU_REDUCTION_PERCENT`.
+
+The benchmark includes the RHI readback because that is the actual boundary consumed by the stream/record pipeline. Therefore the reported CPU reduction describes the current composition-to-QImage stage rather than isolated GPU draw calls.
+
+The integration test `RhiCompositorTest` writes PNG artifacts for chroma key, Gaussian blur, and color correction. On machines where RHI cannot initialize, the test reports `RHI_UNAVAILABLE` and exits successfully unless `WEAR_REQUIRE_RHI_TEST=1` is set.
 
 ## Recording / Streaming Independence
 

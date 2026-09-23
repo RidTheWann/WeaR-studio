@@ -3,6 +3,7 @@
 // ==============================================================================
 
 #include "SceneItem.h"
+#include "IFilter.h"
 
 #include <QPainter>
 #include <QDebug>
@@ -141,6 +142,15 @@ void SceneItem::render(QPainter* painter) const {
     
     QImage frame = currentFrame();
     if (frame.isNull()) return;
+
+    if (m_filter && m_filter->isActive()) {
+        VideoFrame input;
+        input.softwareFrame = frame;
+        VideoFrame filtered = m_filter->processVideo(input);
+        if (!filtered.softwareFrame.isNull()) {
+            frame = filtered.softwareFrame;
+        }
+    }
     
     painter->save();
     

@@ -119,6 +119,8 @@ find_package(Qt6 6.10 REQUIRED COMPONENTS
     OpenGL
     OpenGLWidgets
     Quick
+    GuiPrivate
+    ShaderTools
 )
 
 # Print Qt version for verification

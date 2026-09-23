@@ -89,6 +89,8 @@ struct ItemTransform {
  * SceneItem wraps an ISource and adds transform/rendering properties.
  * It represents a single layer in the scene composition.
  */
+class IFilter;
+
 class SceneItem : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged)
@@ -140,6 +142,16 @@ public:
      * @brief Get the associated source
      */
     [[nodiscard]] ISource* source() const { return m_source; }
+
+    /**
+     * @brief Get the optional video filter attached to this item.
+     */
+    [[nodiscard]] IFilter* filter() const { return m_filter; }
+
+    /**
+     * @brief Attach a non-owning video filter.
+     */
+    void setFilter(IFilter* filter) { m_filter = filter; emit sceneFilterChanged(); }
     
     /**
      * @brief Set the source
@@ -264,12 +276,14 @@ signals:
     void visibilityChanged(bool visible);
     void lockedChanged(bool locked);
     void sourceChanged();
+    void sceneFilterChanged();
 
 private:
     QUuid m_id;
     QString m_name;
     ISource* m_source = nullptr;
     bool m_ownsSource = false;
+    IFilter* m_filter = nullptr;
     
     ItemTransform m_transform;
     BlendMode m_blendMode = BlendMode::Normal;
