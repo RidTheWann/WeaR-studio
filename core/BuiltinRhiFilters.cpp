@@ -153,8 +153,8 @@ VideoFrame ChromaKeyFilter::processVideo(const VideoFrame& input) {
     float softness = 0.08f;
     {
         QMutexLocker lock(&m_mutex);
-        if (!m_active || m_gpuEnabled && !source.isNull()) {
-            // GPU mode still provides this CPU implementation for fallback.
+        if (!m_active) {
+            return input;
         }
         keyColor = m_keyColor;
         threshold = m_threshold;
@@ -307,6 +307,9 @@ VideoFrame GaussianBlurFilter::processVideo(const VideoFrame& input) {
     float radius = 2.0f;
     {
         QMutexLocker lock(&m_mutex);
+        if (!m_active) {
+            return input;
+        }
         radius = m_radius;
     }
 
@@ -499,6 +502,9 @@ VideoFrame ColorCorrectionFilter::processVideo(const VideoFrame& input) {
     float gamma = 1.0f;
     {
         QMutexLocker lock(&m_mutex);
+        if (!m_active) {
+            return input;
+        }
         brightness = m_brightness;
         contrast = m_contrast;
         saturation = m_saturation;
