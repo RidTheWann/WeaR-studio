@@ -346,8 +346,8 @@ VideoFrame GaussianBlurFilter::processVideo(const VideoFrame& input) {
                 }
             }
 
-            dst[x] = qRgba(ar / weightSum, ag / weightSum,
-                           ab / weightSum, aa / weightSum);
+            dst[x] = qPremultiply(qRgba(
+                ar / weightSum, ag / weightSum, ab / weightSum, aa / weightSum));
         }
     }
 
