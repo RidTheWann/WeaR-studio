@@ -77,6 +77,8 @@ jobs:
           ./packaging/windows/package-windows.ps1 -BuildDir "$env:GITHUB_WORKSPACE\\build" -FFmpegRoot "$env:FFMPEG_ROOT"
 
           $stage = "$env:GITHUB_WORKSPACE\\build\\installer-stage"
+          Get-ChildItem $stage -File | Select-Object -ExpandProperty Name
+
           $required = @(
             "WeaR-Studio.exe",
             "Qt6Core.dll",
