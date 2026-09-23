@@ -9,6 +9,9 @@
 #include <memory>
 
 #include <SceneTransition.h>
+#include <StreamManager.h>
+#include <EncoderManager.h>
+#include <RecordingManager.h>
 
 class QListWidget;
 class QListWidgetItem;
