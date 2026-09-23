@@ -63,7 +63,16 @@ int main(int argc, char** argv) {
         QThread::msleep(10);
     }
 
+    QElapsedTimer stopTimer;
+    stopTimer.start();
     stream.stopStream();
+    const qint64 stopElapsed = stopTimer.elapsed();
+
+    if (stopElapsed > 3000) {
+        qCritical() << "StreamManager stop took too long:"
+                    << stopElapsed << "ms";
+        return 1;
+    }
 
     QMutexLocker lock(&mutex);
     if (attempts.size() < 3) {
