@@ -1,0 +1,13 @@
+{
+    "Keys": [
+        "wear.source.browser"
+    ],
+    "MetaData": {
+        "name": "Browser Source",
+        "version": "0.1",
+        "author": "WeaR-studio",
+        "description": "CEF Chromium Windowless/Off-Screen browser source",
+        "type": "source",
+        "compatVersion": "0.1"
+    }
+}
