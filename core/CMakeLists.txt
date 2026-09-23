@@ -89,86 +89,93 @@ target_link_libraries(core
 # Windows-Specific Dependencies
 # ==============================================================================
 if(WIN32)
-    # Find Windows SDK for C++/WinRT headers
-    # C++/WinRT is included in Windows SDK 10.0.17134.0 and later
-    if(DEFINED ENV{WindowsSdkDir})
-        set(WINDOWS_SDK_DIR "$ENV{WindowsSdkDir}")
+    # Locate the Windows SDK installation used for C++/WinRT headers.
+    if(DEFINED ENV{WindowsSdkDir} AND NOT "$ENV{WindowsSdkDir}" STREQUAL "")
+        file(TO_CMAKE_PATH "$ENV{WindowsSdkDir}" WINDOWS_SDK_DIR)
     else()
-        set(WINDOWS_SDK_DIR "C:/Program Files (x86)/Windows Kits/10")
+        set(WINDOWS_SDK_DIR
+            "$ENV{ProgramFiles(x86)}/Windows Kits/10"
+        )
     endif()
-    
-    # Resolve the Windows SDK C++/WinRT header directory from the
-    # active Visual Studio toolchain/environment, with a fallback scan.
-    if(CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
-        set(WINDOWS_SDK_VERSION "${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}")
-    elseif(DEFINED ENV{WindowsSDKVersion})
-        string(REGEX REPLACE "\\\\$" "" WINDOWS_SDK_VERSION "$ENV{WindowsSDKVersion}")
-    else()
-        file(GLOB SDK_VERSIONS
+
+    # Prefer the SDK selected by the active Visual Studio generator, but only
+    # when it actually contains the required C++/WinRT Direct3D interop header.
+    set(CPPWINRT_INCLUDE_DIR "")
+    if(DEFINED CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
+        set(_selected_cppwinrt
+            "${WINDOWS_SDK_DIR}/Include/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}/cppwinrt"
+        )
+        if(EXISTS
+            "${_selected_cppwinrt}/windows.graphics.directx.direct3d11.interop.h"
+        )
+            set(CPPWINRT_INCLUDE_DIR "${_selected_cppwinrt}")
+        endif()
+    endif()
+
+    # Otherwise choose the newest installed SDK that contains the required
+    # header. This avoids assuming a particular SDK version is installed.
+    if(NOT CPPWINRT_INCLUDE_DIR)
+        file(GLOB _cppwinrt_candidates
             "${WINDOWS_SDK_DIR}/Include/*/cppwinrt"
         )
-        if(NOT SDK_VERSIONS)
-            message(FATAL_ERROR
-                "Could not find the Windows SDK C++/WinRT headers."
+        list(SORT _cppwinrt_candidates COMPARE NATURAL ORDER DESCENDING)
+
+        foreach(candidate IN LISTS _cppwinrt_candidates)
+            if(EXISTS
+                "${candidate}/windows.graphics.directx.direct3d11.interop.h"
             )
-        endif()
-        list(SORT SDK_VERSIONS COMPARE NATURAL ORDER DESCENDING)
-        list(GET SDK_VERSIONS 0 CPPWINRT_INCLUDE_DIR)
+                set(CPPWINRT_INCLUDE_DIR "${candidate}")
+                break()
+            endif()
+        endforeach()
     endif()
 
-    if(NOT DEFINED CPPWINRT_INCLUDE_DIR)
-        set(CPPWINRT_INCLUDE_DIR
-            "${WINDOWS_SDK_DIR}/Include/${WINDOWS_SDK_VERSION}/cppwinrt"
-        )
-    endif()
-
-    if(NOT EXISTS
-        "${CPPWINRT_INCLUDE_DIR}/windows.graphics.directx.direct3d11.interop.h"
-    )
+    if(NOT CPPWINRT_INCLUDE_DIR)
         message(FATAL_ERROR
-            "C++/WinRT Direct3D interop headers were not found at "
-            "${CPPWINRT_INCLUDE_DIR}"
+            "Could not find Windows SDK C++/WinRT headers under: "
+            "${WINDOWS_SDK_DIR}/Include"
         )
     endif()
 
     target_include_directories(core PRIVATE "${CPPWINRT_INCLUDE_DIR}")
-    message(STATUS "C++/WinRT headers found at: ${CPPWINRT_INCLUDE_DIR}")
+    message(STATUS
+        "C++/WinRT headers found at: ${CPPWINRT_INCLUDE_DIR}"
+    )
 
     target_link_libraries(core
         PUBLIC
             # Desktop Window Manager (for window enumeration)
             dwmapi
-            
+
             # Direct3D 11 (for GPU capture and rendering)
             d3d11
             dxgi
             d3dcompiler
             dbghelp
-            
-            # Windows Runtime (for Graphics Capture API)
+
+            # Windows Runtime
             windowsapp
             RuntimeObject
-            
-            # Additional Windows libraries
+
+            # COM / shell libraries
             ole32
             oleaut32
             uuid
-            
+
             # Media Foundation (for webcam capture)
             mf
             mfplat
             mfreadwrite
             mfuuid
-            
+
             # Windows Imaging Component
             windowscodecs
-            
+
             # Shell API (for display scaling)
             shcore
     )
-    
-    # Enable C++/WinRT compiler options only for MSVC.
-    # GNU builds must not receive MSVC-style /flags.
+
+    # MSVC-specific C++/WinRT compiler options. Do not pass /flags to GNU.
     if(MSVC)
         target_compile_options(core PRIVATE
             /await:strict
@@ -180,8 +187,7 @@ if(WIN32)
             -municode
         )
     endif()
-    
-    # Define for Windows Runtime support
+
     target_compile_definitions(core PRIVATE
         WINRT_LEAN_AND_MEAN
         _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
