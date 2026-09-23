@@ -1038,6 +1038,7 @@ void MainWindow::updateStatistics() {
         m_bitrateLabel->setText("Bitrate: --");
         m_durationLabel->setText("Duration: 00:00:00");
     }
+} // End of MainWindow::updateStatistics()
 
 void MainWindow::updateStreamState() {
     StreamState state = StreamManager::instance().state();
