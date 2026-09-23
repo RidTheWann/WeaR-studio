@@ -399,7 +399,7 @@ public:
 
         cb->beginPass(
             m_renderTarget,
-            Qt::black,
+            scene.backgroundColor(),
             {1.0f, 0},
             updates);
 
