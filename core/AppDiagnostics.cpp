@@ -1,6 +1,7 @@
 #include "AppDiagnostics.h"
 
 #include <QCoreApplication>
+#include <QDebug>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -204,11 +205,7 @@ LONG WINAPI unhandledExceptionFilter(EXCEPTION_POINTERS* exceptionInfo) {
         CloseHandle(fileHandle);
     }
 
-    AppDiagnostics::writeCrashNote(
-        QStringLiteral(
-            "Unhandled Windows exception captured. Crash artifacts: %1(.log/.dmp)")
-            .arg(base));
-
+    OutputDebugStringW(L"WeaR Studio: unhandled exception captured; crash artifacts were written.\r\n");
     return EXCEPTION_EXECUTE_HANDLER;
 }
 #endif
