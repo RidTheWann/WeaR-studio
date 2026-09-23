@@ -11,6 +11,7 @@
 #include <mfvirtualcamera.h>
 
 #include <QDebug>
+#include <QDateTime>
 
 #include <sddl.h>
 #include <windows.h>
