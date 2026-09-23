@@ -83,3 +83,6 @@ target_include_directories(CompositingBenchmark
 target_compile_features(CompositingBenchmark PRIVATE cxx_std_20)
 
 add_test(NAME CompositingBenchmark COMMAND CompositingBenchmark)
+
+
+set_tests_properties(CompositingBenchmark PROPERTIES LABELS "benchmark")
