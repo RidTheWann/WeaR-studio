@@ -455,12 +455,13 @@ public:
             reinterpret_cast<const uchar*>(readback.data.constData()),
             readback.pixelSize.width(),
             readback.pixelSize.height(),
-            QImage::Format_RGBA8888_Premultiplied);
+            QImage::Format_RGBA8888);
 
         if (m_rhi->isYUpInFramebuffer()) {
-            output = wrapped.mirrored(false, true).copy();
+            output = wrapped.mirrored(false, true)
+                         .convertToFormat(QImage::Format_ARGB32_Premultiplied);
         } else {
-            output = wrapped.copy();
+            output = wrapped.convertToFormat(QImage::Format_ARGB32_Premultiplied);
         }
 
         return !output.isNull();
