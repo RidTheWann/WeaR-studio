@@ -17,6 +17,8 @@ class QDockWidget;
 namespace WeaR {
 
 class PreviewWidget;
+class AudioMixerDock;
+class ISource;
 
 /**
  * @brief Main application window
@@ -65,6 +67,7 @@ private:
     
     void createScenesDock();
     void createSourcesDock();
+    void createAudioMixerDock();
     void createControlsDock();
     
     void refreshScenesList();
@@ -77,7 +80,12 @@ private:
     // Docks
     QDockWidget* m_scenesDock = nullptr;
     QDockWidget* m_sourcesDock = nullptr;
+    AudioMixerDock* m_audioMixerDock = nullptr;
     QDockWidget* m_controlsDock = nullptr;
+    
+    // Audio sources
+    std::shared_ptr<ISource> m_desktopAudio;
+    std::shared_ptr<ISource> m_micAudio;
     
     // Scenes dock widgets
     QListWidget* m_scenesList = nullptr;

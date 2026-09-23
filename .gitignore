@@ -3,6 +3,10 @@ build/
 out/
 bin/
 *.dir/
+*.log
+build*.log
+build_output*.txt
+
 
 # CMake
 CMakeCache.txt

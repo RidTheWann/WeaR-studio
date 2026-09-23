@@ -38,8 +38,14 @@ WeaR Studio is a professional streaming application built with **Qt 6.10** and *
 │         ▼                   ▼                   ▼                   ▼        │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌────────────┐ │
 │  │  WinRT GC    │    │  QPainter    │    │   FFmpeg     │    │   RTMP     │ │
-│  │  D3D11       │    │  Compositor  │    │   NVENC      │    │   FLV      │ │
+│  │  D3D11       │    │  Compositor  │    │ NVENC + AAC  │    │   FLV      │ │
 │  └──────────────┘    └──────────────┘    └──────────────┘    └────────────┘ │
+│                             ▲                   ▲                            │
+│  ┌──────────────┐           │                   │                            │
+│  │ AudioCapture │           │                   │                            │
+│  │ Loopback/Mic │──▶┌──────────────┐            │                            │
+│  └──────────────┘   │  AudioMixer  │────────────┘                            │
+│                     └──────────────┘                                         │
 │                                                                              │
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
 │  │                         Plugin Manager                                │   │
@@ -60,28 +66,39 @@ WeaR Studio is a professional streaming application built with **Qt 6.10** and *
 | Build System | CMake 3.21+ |
 | Compiler | MSVC v143 (Visual Studio 2022/2026) |
 | Video Capture | Windows Graphics Capture API (WinRT) |
-| Hardware Encoder | FFmpeg + NVENC (h264_nvenc) |
+| Audio Capture | Windows WASAPI (Loopback + Microphone) |
+| Video Encoder | FFmpeg + NVENC (h264_nvenc) / libx264 fallback |
+| Audio Encoder | FFmpeg AAC (native AAC + libswresample) |
 | GPU Interop | Direct3D 11 |
-| Streaming | FFmpeg libavformat (RTMP/FLV) |
+| Streaming | FFmpeg libavformat (RTMP/FLV with A/V muxing) |
 | Plugin System | Qt Plugin Loader |
 
 ---
 
 ## Data Flow Pipeline
 
-The streaming pipeline follows a linear data flow:
+The streaming pipeline follows a synchronized video & audio data flow:
 
 ```
+Video:
 ┌────────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐
 │  CAPTURE   │────▶│  COMPOSE   │────▶│   ENCODE   │────▶│   STREAM   │
 │            │     │            │     │            │     │            │
 │ D3D11      │     │ QPainter   │     │ NVENC      │     │ RTMP       │
 │ Texture    │     │ QImage     │     │ AVPacket   │     │ TCP/IP     │
+└────────────┘     └────────────┘     └────────────┘     │            │
+      │                  │                  │            │            │
+      ▼                  ▼                  ▼            │            │
+  GPU Memory         CPU Memory          GPU Memory      │            │
+  (Zero-Copy)        (Composition)       (HW Encode)     │            │
+                                                         │   FLV Mux  │
+Audio:                                                   │   (Video   │
+┌────────────┐     ┌────────────┐     ┌────────────┐     │  + Audio)  │
+│  WASAPI    │────▶│ AUDIO MIX  │────▶│ AAC ENCODE │────▶│            │
+│            │     │            │     │            │     │            │
+│ Loopback + │     │ Multi-track│     │ libswresample│    │            │
+│ Mic Capture│     │ Volume/Mute│     │ AAC Packet │     │            │
 └────────────┘     └────────────┘     └────────────┘     └────────────┘
-      │                  │                  │                  │
-      ▼                  ▼                  ▼                  ▼
-  GPU Memory         CPU Memory          GPU Memory        Network
-  (Zero-Copy)        (Composition)       (HW Encode)       (Output)
 ```
 
 ### Frame Lifecycle
@@ -222,6 +239,42 @@ plugins.discoverPlugins();  // Scans ./plugins/*.dll
 plugins.loadAllPlugins();
 ISource* colorSource = plugins.createSource("wear.source.color");
 ```
+
+### AudioMixer
+
+**File:** `core/AudioMixer.h/.cpp`
+
+**Purpose:** Multi-track audio mixing, per-track volume, mute, VU metering, and soft limiting.
+
+**Key Features:**
+- Thread-safe Singleton (`AudioMixer::instance()`)
+- Multi-track mixing at 48kHz stereo float
+- Per-track volume gain and mute control
+- Soft peak limiter / clamping preventing clipping
+- Peak decay ballistics and `levelsUpdated` signal for UI VU meters
+- Aligned tick-by-tick with SceneManager render loop (e.g. 800 samples per tick at 60fps)
+
+```cpp
+// Usage
+auto& mixer = AudioMixer::instance();
+int trackId = mixer.addTrack(desktopAudioSource);
+mixer.setTrackVolume(trackId, 0.8f);
+mixer.setTrackMuted(trackId, false);
+AudioFrame mixed = mixer.mixTracks(800);
+```
+
+### AudioCaptureSource (WASAPI)
+
+**File:** `core/AudioCaptureSource.h/.cpp`
+
+**Purpose:** Windows WASAPI loopback capture (speaker output) and microphone input.
+
+**Key Features:**
+- Implements `ISource` interface (`captureAudioFrame`)
+- Desktop audio loopback (`AUDCLNT_STREAMFLAGS_LOOPBACK`)
+- Low latency event-driven WASAPI capture loop
+- High-quality linear resampling from device native mix format to standard 48kHz stereo float
+- Thread-safe FIFO audio buffer
 
 ---
 

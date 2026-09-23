@@ -11,8 +11,9 @@ int main(int argc, char* argv[]) {
     // Create application with dark theme
     WeaR::WeaRApp app(argc, argv);
     
-    // Enable high DPI scaling
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     app.setAttribute(Qt::AA_UseHighDpiPixmaps);
+#endif
     
     qDebug() << "Starting WeaR Studio...";
     

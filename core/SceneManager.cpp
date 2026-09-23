@@ -5,6 +5,7 @@
 
 #include "SceneManager.h"
 #include "EncoderManager.h"
+#include "AudioMixer.h"
 
 #include <QDebug>
 #include <QDateTime>
@@ -285,9 +286,17 @@ void SceneManager::doRender() {
     // Output to preview
     outputToPreview(frame);
     
+    // Mix audio aligned with render tick
+    int sampleRate = 48000;
+    int samplesPerFrame = static_cast<int>(sampleRate / (m_targetFps > 0.0 ? m_targetFps : 60.0));
+    AudioFrame mixedAudio = AudioMixer::instance().mixTracks(samplesPerFrame);
+
     // Output to encoder
     if (m_encoderOutputEnabled) {
         outputToEncoder(frame);
+        if (!mixedAudio.samples.empty()) {
+            EncoderManager::instance().pushAudioFrame(mixedAudio);
+        }
     }
     
     // Update statistics

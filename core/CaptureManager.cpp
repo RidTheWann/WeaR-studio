@@ -455,12 +455,8 @@ VideoFrame CaptureManager::captureVideoFrame() {
     m_currentFrame = texture;
     m_frameTimestamp = timestamp;
     
-    // If software frame is needed (e.g., for preview), convert to QImage
-    // This is expensive - only do when necessary
-    if (!m_config.useHardwareAcceleration) {
-        frame.softwareFrame = textureToQImage(texture.Get());
-        frame.isHardwareFrame = false;
-    }
+    // Convert to QImage for QPainter scene compositing and preview
+    frame.softwareFrame = textureToQImage(texture.Get());
     
     return frame;
 }
@@ -754,7 +750,15 @@ QImage CaptureManager::textureToQImage(ID3D11Texture2D* texture) {
     D3D11_TEXTURE2D_DESC desc;
     texture->GetDesc(&desc);
     
-    // Create staging texture if needed
+    // Create staging texture if needed or if dimensions changed
+    if (m_stagingTexture) {
+        D3D11_TEXTURE2D_DESC curDesc;
+        m_stagingTexture->GetDesc(&curDesc);
+        if (curDesc.Width != desc.Width || curDesc.Height != desc.Height) {
+            m_stagingTexture.Reset();
+        }
+    }
+    
     if (!m_stagingTexture) {
         D3D11_TEXTURE2D_DESC stagingDesc = desc;
         stagingDesc.Usage = D3D11_USAGE_STAGING;

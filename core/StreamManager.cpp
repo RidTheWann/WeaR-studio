@@ -29,15 +29,16 @@ namespace WeaR {
 struct QueuedPacket {
     AVPacket* packet = nullptr;
     bool isKeyframe = false;
+    bool isAudio = false;
     
     QueuedPacket() = default;
     
-    QueuedPacket(AVPacket* pkt, bool keyframe) 
-        : packet(pkt), isKeyframe(keyframe) {}
+    QueuedPacket(AVPacket* pkt, bool keyframe, bool audio = false) 
+        : packet(pkt), isKeyframe(keyframe), isAudio(audio) {}
     
     // Move semantics
     QueuedPacket(QueuedPacket&& other) noexcept 
-        : packet(other.packet), isKeyframe(other.isKeyframe) {
+        : packet(other.packet), isKeyframe(other.isKeyframe), isAudio(other.isAudio) {
         other.packet = nullptr;
     }
     
@@ -46,6 +47,7 @@ struct QueuedPacket {
             if (packet) av_packet_free(&packet);
             packet = other.packet;
             isKeyframe = other.isKeyframe;
+            isAudio = other.isAudio;
             other.packet = nullptr;
         }
         return *this;
@@ -70,6 +72,14 @@ public:
     ~Impl() {
         stop();
         cleanup();
+        if (m_codecpar) {
+            avcodec_parameters_free(&m_codecpar);
+            m_codecpar = nullptr;
+        }
+        if (m_audioCodecpar) {
+            avcodec_parameters_free(&m_audioCodecpar);
+            m_audioCodecpar = nullptr;
+        }
     }
     
     bool configure(const StreamSettings& settings) {
@@ -92,6 +102,10 @@ public:
     }
     
     bool setCodecParameters(const AVCodecParameters* codecpar) {
+        return setVideoCodecParameters(codecpar);
+    }
+
+    bool setVideoCodecParameters(const AVCodecParameters* codecpar) {
         QMutexLocker lock(&m_mutex);
         
         if (!codecpar) return false;
@@ -110,9 +124,35 @@ public:
             return false;
         }
         
-        qDebug() << "Codec parameters set:"
+        qDebug() << "Video codec parameters set:"
                  << "codec_id=" << m_codecpar->codec_id
                  << "extradata_size=" << m_codecpar->extradata_size;
+        
+        return true;
+    }
+
+    bool setAudioCodecParameters(const AVCodecParameters* codecpar) {
+        QMutexLocker lock(&m_mutex);
+        
+        if (!codecpar) return false;
+        
+        if (m_audioCodecpar) {
+            avcodec_parameters_free(&m_audioCodecpar);
+        }
+        
+        m_audioCodecpar = avcodec_parameters_alloc();
+        if (!m_audioCodecpar) return false;
+        
+        int ret = avcodec_parameters_copy(m_audioCodecpar, codecpar);
+        if (ret < 0) {
+            avcodec_parameters_free(&m_audioCodecpar);
+            return false;
+        }
+        
+        qDebug() << "Audio codec parameters set:"
+                 << "codec_id=" << m_audioCodecpar->codec_id
+                 << "sample_rate=" << m_audioCodecpar->sample_rate
+                 << "channels=" << m_audioCodecpar->ch_layout.nb_channels;
         
         return true;
     }
@@ -182,7 +222,7 @@ public:
     }
     
     bool writePacket(const uint8_t* data, int size, 
-                     int64_t pts, int64_t dts, bool isKeyframe) {
+                     int64_t pts, int64_t dts, bool isKeyframe, bool isAudio = false) {
         if (!m_running || m_state == StreamState::Stopped) return false;
         
         // Create AVPacket
@@ -200,10 +240,15 @@ public:
         packet->dts = dts;
         packet->flags = isKeyframe ? AV_PKT_FLAG_KEY : 0;
         
-        return queuePacket(packet, isKeyframe);
+        return queuePacket(packet, isKeyframe, isAudio);
     }
     
-    bool writePacket(const AVPacket* srcPacket) {
+    bool writeAudioPacket(const uint8_t* data, int size, 
+                          int64_t pts, int64_t dts) {
+        return writePacket(data, size, pts, dts, true, true);
+    }
+
+    bool writePacket(const AVPacket* srcPacket, bool isAudio = false) {
         if (!m_running || m_state == StreamState::Stopped) return false;
         if (!srcPacket) return false;
         
@@ -212,7 +257,7 @@ public:
         if (!packet) return false;
         
         bool isKeyframe = (srcPacket->flags & AV_PKT_FLAG_KEY) != 0;
-        return queuePacket(packet, isKeyframe);
+        return queuePacket(packet, isKeyframe, isAudio);
     }
     
     int queueSize() const {
@@ -289,6 +334,30 @@ private:
             m_videoStream->codecpar->height = m_settings.videoHeight;
             m_videoStream->codecpar->bit_rate = m_settings.videoBitrate * 1000;
         }
+
+        // Create audio stream
+        if (m_settings.audioEnabled) {
+            m_audioStream = avformat_new_stream(m_formatContext, nullptr);
+            if (!m_audioStream) {
+                qWarning() << "Failed to create audio stream";
+            } else {
+                m_audioStream->id = 1;
+                m_audioStream->time_base = AVRational{1, 1000};  // FLV uses milliseconds
+                
+                if (m_audioCodecpar) {
+                    ret = avcodec_parameters_copy(m_audioStream->codecpar, m_audioCodecpar);
+                    if (ret < 0) {
+                        logAvError("Failed to copy audio codec parameters", ret);
+                    }
+                } else {
+                    m_audioStream->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
+                    m_audioStream->codecpar->codec_id = AV_CODEC_ID_AAC;
+                    m_audioStream->codecpar->sample_rate = m_settings.audioSampleRate;
+                    av_channel_layout_default(&m_audioStream->codecpar->ch_layout, m_settings.audioChannels);
+                    m_audioStream->codecpar->bit_rate = m_settings.audioBitrate * 1000;
+                }
+            }
+        }
         
         // Set up RTMP connection options
         AVDictionary* options = nullptr;
@@ -338,8 +407,6 @@ private:
     }
     
     void cleanup() {
-        m_headerWritten = false;
-        
         if (m_formatContext) {
             // Write trailer if header was written
             if (m_headerWritten) {
@@ -354,8 +421,10 @@ private:
             avformat_free_context(m_formatContext);
             m_formatContext = nullptr;
         }
+        m_headerWritten = false;
         
         m_videoStream = nullptr;
+        m_audioStream = nullptr;
         
         // Clear packet queue
         {
@@ -364,11 +433,11 @@ private:
         }
     }
     
-    bool queuePacket(AVPacket* packet, bool isKeyframe) {
+    bool queuePacket(AVPacket* packet, bool isKeyframe, bool isAudio = false) {
         QMutexLocker lock(&m_queueMutex);
         
         // Check queue size limit
-        const int MAX_QUEUE_SIZE = 300;  // ~5 seconds at 60fps
+        const int MAX_QUEUE_SIZE = 500;  // Support both video and audio
         if (m_packetQueue.size() >= MAX_QUEUE_SIZE) {
             av_packet_free(&packet);
             m_stats.droppedPackets++;
@@ -376,7 +445,7 @@ private:
             return false;
         }
         
-        m_packetQueue.emplace_back(packet, isKeyframe);
+        m_packetQueue.emplace_back(packet, isKeyframe, isAudio);
         m_queueCondition.wakeOne();
         
         return true;
@@ -435,7 +504,7 @@ private:
             if (!queuedPacket.packet) continue;
             
             // Send packet
-            if (!sendPacket(queuedPacket.packet, queuedPacket.isKeyframe)) {
+            if (!sendPacket(queuedPacket.packet, queuedPacket.isKeyframe, queuedPacket.isAudio)) {
                 // Send failed - attempt reconnection
                 qWarning() << "Send failed, attempting reconnection...";
                 cleanup();
@@ -449,31 +518,32 @@ private:
         qDebug() << "Stream output thread stopped";
     }
     
-    bool sendPacket(AVPacket* packet, bool isKeyframe) {
-        if (!m_formatContext || !m_videoStream || !m_headerWritten) {
+    bool sendPacket(AVPacket* packet, bool isKeyframe, bool isAudio) {
+        if (!m_formatContext || !m_headerWritten) {
             return false;
         }
         
-        // CRITICAL: Rescale timestamps from encoder timebase to stream timebase
-        // Encoder typically uses {1, fps} or {1, 1000000} timebase
-        // FLV/RTMP uses {1, 1000} (milliseconds)
-        
-        // Assume encoder timebase is {1, 1000000} (microseconds) if not set
-        AVRational encoderTimebase = {1, 1000000};
-        
-        av_packet_rescale_ts(packet, encoderTimebase, m_videoStream->time_base);
-        
-        // Set stream index
-        packet->stream_index = m_videoStream->index;
-        
-        // Set duration if not set
-        if (packet->duration <= 0) {
-            // Calculate from FPS
-            packet->duration = av_rescale_q(
-                1, 
-                AVRational{m_settings.videoFpsDen, m_settings.videoFpsNum},
-                m_videoStream->time_base
-            );
+        if (isAudio) {
+            if (!m_audioStream) return false;
+            
+            AVRational audioEncoderTimebase = {1, m_settings.audioSampleRate};
+            av_packet_rescale_ts(packet, audioEncoderTimebase, m_audioStream->time_base);
+            packet->stream_index = m_audioStream->index;
+        } else {
+            if (!m_videoStream) return false;
+            
+            AVRational encoderTimebase = {1, 1000000};
+            av_packet_rescale_ts(packet, encoderTimebase, m_videoStream->time_base);
+            packet->stream_index = m_videoStream->index;
+            
+            // Set duration if not set
+            if (packet->duration <= 0) {
+                packet->duration = av_rescale_q(
+                    1, 
+                    AVRational{m_settings.videoFpsDen, m_settings.videoFpsNum},
+                    m_videoStream->time_base
+                );
+            }
         }
         
         // Write packet
@@ -492,7 +562,7 @@ private:
             QMutexLocker lock(&m_statsMutex);
             m_stats.bytesWritten += packet->size;
             m_stats.packetsWritten++;
-            if (isKeyframe) {
+            if (!isAudio && isKeyframe) {
                 m_stats.keyframesSent++;
             }
             
@@ -547,7 +617,9 @@ private:
     // FFmpeg objects
     AVFormatContext* m_formatContext = nullptr;
     AVStream* m_videoStream = nullptr;
+    AVStream* m_audioStream = nullptr;
     AVCodecParameters* m_codecpar = nullptr;
+    AVCodecParameters* m_audioCodecpar = nullptr;
     
     // Flags
     bool m_headerWritten = false;
@@ -589,6 +661,14 @@ bool StreamManager::setCodecParameters(const AVCodecParameters* codecpar) {
     return m_impl->setCodecParameters(codecpar);
 }
 
+bool StreamManager::setVideoCodecParameters(const AVCodecParameters* codecpar) {
+    return m_impl->setVideoCodecParameters(codecpar);
+}
+
+bool StreamManager::setAudioCodecParameters(const AVCodecParameters* codecpar) {
+    return m_impl->setAudioCodecParameters(codecpar);
+}
+
 bool StreamManager::startStream() {
     return m_impl->start();
 }
@@ -614,12 +694,17 @@ bool StreamManager::isConnected() const {
 }
 
 bool StreamManager::writePacket(const uint8_t* data, int size, 
-                                 int64_t pts, int64_t dts, bool isKeyframe) {
-    return m_impl->writePacket(data, size, pts, dts, isKeyframe);
+                                 int64_t pts, int64_t dts, bool isKeyframe, bool isAudio) {
+    return m_impl->writePacket(data, size, pts, dts, isKeyframe, isAudio);
 }
 
-bool StreamManager::writePacket(const AVPacket* packet) {
-    return m_impl->writePacket(packet);
+bool StreamManager::writeAudioPacket(const uint8_t* data, int size, 
+                                      int64_t pts, int64_t dts) {
+    return m_impl->writeAudioPacket(data, size, pts, dts);
+}
+
+bool StreamManager::writePacket(const AVPacket* packet, bool isAudio) {
+    return m_impl->writePacket(packet, isAudio);
 }
 
 int StreamManager::queueSize() const {

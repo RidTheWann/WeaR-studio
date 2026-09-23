@@ -15,7 +15,9 @@ extern "C" {
 #include <libavutil/opt.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/pixfmt.h>
+#include <libavutil/channel_layout.h>
 #include <libswscale/swscale.h>
+#include <libswresample/swresample.h>
 }
 
 #include <chrono>
@@ -107,6 +109,7 @@ struct QueuedFrame {
 // Implementation class (PIMPL)
 // ==============================================================================
 class EncoderManager::Impl {
+    friend class EncoderManager;
 public:
     Impl(EncoderManager* parent) : m_parent(parent) {}
     
@@ -132,9 +135,14 @@ public:
         
         if (m_running) return true;
         
-        // Initialize encoder
+        // Initialize video encoder
         if (!initializeEncoder()) {
             return false;
+        }
+
+        // Initialize audio encoder
+        if (!initializeAudioEncoder()) {
+            qWarning() << "Audio encoder initialization failed, continuing with video only";
         }
         
         // Start encoding thread
@@ -481,26 +489,40 @@ private:
             QMutexLocker lock(&m_queueMutex);
             m_frameQueue.clear();
         }
+
+        cleanupAudio();
     }
     
     void flush() {
-        if (!m_codecContext) return;
-        
-        // Send null frame to flush
-        avcodec_send_frame(m_codecContext, nullptr);
-        
-        // Receive remaining packets
-        while (true) {
-            int ret = avcodec_receive_packet(m_codecContext, m_packet);
-            if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
-                break;
-            }
-            if (ret < 0) {
-                break;
-            }
+        if (m_codecContext) {
+            // Send null frame to flush
+            avcodec_send_frame(m_codecContext, nullptr);
             
-            processPacket();
-            av_packet_unref(m_packet);
+            // Receive remaining packets
+            while (true) {
+                int ret = avcodec_receive_packet(m_codecContext, m_packet);
+                if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
+                    break;
+                }
+                if (ret < 0) {
+                    break;
+                }
+                
+                processPacket();
+                av_packet_unref(m_packet);
+            }
+        }
+
+        if (m_audioCodecContext) {
+            avcodec_send_frame(m_audioCodecContext, nullptr);
+            while (true) {
+                int ret = avcodec_receive_packet(m_audioCodecContext, m_audioPacket);
+                if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN) || ret < 0) {
+                    break;
+                }
+                processAudioPacket();
+                av_packet_unref(m_audioPacket);
+            }
         }
     }
     
@@ -659,8 +681,213 @@ private:
         
         return frame;
     }
-    
-    // Parent reference
+
+    bool initializeAudioEncoder() {
+        if (!m_settings.audioEnabled) return true;
+
+        const AVCodec* audioCodec = avcodec_find_encoder(AV_CODEC_ID_AAC);
+        if (!audioCodec) {
+            qWarning() << "AAC encoder (AV_CODEC_ID_AAC) not found!";
+            return false;
+        }
+
+        m_audioCodecContext = avcodec_alloc_context3(audioCodec);
+        if (!m_audioCodecContext) {
+            qWarning() << "Failed to allocate AAC codec context";
+            return false;
+        }
+
+        m_audioCodecContext->bit_rate = m_settings.audioBitrate * 1000;
+        m_audioCodecContext->sample_rate = m_settings.audioSampleRate;
+        av_channel_layout_default(&m_audioCodecContext->ch_layout, m_settings.audioChannels);
+        m_audioCodecContext->sample_fmt = AV_SAMPLE_FMT_FLTP;
+        m_audioCodecContext->time_base = AVRational{1, m_settings.audioSampleRate};
+        m_audioCodecContext->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+
+        int ret = avcodec_open2(m_audioCodecContext, audioCodec, nullptr);
+        if (ret < 0) {
+            char errbuf[256];
+            av_strerror(ret, errbuf, sizeof(errbuf));
+            qCritical() << "Failed to open AAC codec:" << errbuf;
+            cleanupAudio();
+            return false;
+        }
+
+        int frameSize = m_audioCodecContext->frame_size > 0 ? m_audioCodecContext->frame_size : 1024;
+        m_audioFrame = av_frame_alloc();
+        m_audioFrame->nb_samples = frameSize;
+        m_audioFrame->format = m_audioCodecContext->sample_fmt;
+        av_channel_layout_copy(&m_audioFrame->ch_layout, &m_audioCodecContext->ch_layout);
+        m_audioFrame->sample_rate = m_audioCodecContext->sample_rate;
+        ret = av_frame_get_buffer(m_audioFrame, 0);
+        if (ret < 0) {
+            cleanupAudio();
+            return false;
+        }
+
+        m_audioPacket = av_packet_alloc();
+
+        // Setup swresample: convert interleaved float to encoder sample_fmt
+        AVChannelLayout inLayout;
+        av_channel_layout_default(&inLayout, m_settings.audioChannels);
+        ret = swr_alloc_set_opts2(
+            &m_swrContext,
+            &m_audioCodecContext->ch_layout,
+            m_audioCodecContext->sample_fmt,
+            m_audioCodecContext->sample_rate,
+            &inLayout,
+            AV_SAMPLE_FMT_FLT,
+            m_settings.audioSampleRate,
+            0,
+            nullptr
+        );
+        av_channel_layout_uninit(&inLayout);
+
+        if (ret < 0 || !m_swrContext || swr_init(m_swrContext) < 0) {
+            qCritical() << "Failed to initialize swresample context";
+            cleanupAudio();
+            return false;
+        }
+
+        m_audioPts = 0;
+        {
+            QMutexLocker lock(&m_audioMutex);
+            m_audioFifo.clear();
+        }
+
+        qDebug() << "AAC Audio Encoder initialized:"
+                 << m_settings.audioSampleRate << "Hz,"
+                 << m_settings.audioChannels << "channels,"
+                 << m_settings.audioBitrate << "kbps, frame size:" << frameSize;
+        return true;
+    }
+
+    void cleanupAudio() {
+        if (m_swrContext) {
+            swr_free(&m_swrContext);
+            m_swrContext = nullptr;
+        }
+        if (m_audioPacket) {
+            av_packet_free(&m_audioPacket);
+            m_audioPacket = nullptr;
+        }
+        if (m_audioFrame) {
+            av_frame_free(&m_audioFrame);
+            m_audioFrame = nullptr;
+        }
+        if (m_audioCodecContext) {
+            avcodec_free_context(&m_audioCodecContext);
+            m_audioCodecContext = nullptr;
+        }
+        if (m_audioCodecpar) {
+            avcodec_parameters_free(&m_audioCodecpar);
+            m_audioCodecpar = nullptr;
+        }
+        if (m_videoCodecpar) {
+            avcodec_parameters_free(&m_videoCodecpar);
+            m_videoCodecpar = nullptr;
+        }
+        QMutexLocker lock(&m_audioMutex);
+        m_audioFifo.clear();
+    }
+
+public:
+    void pushAudioFrame(const AudioFrame& frame) {
+        if (!m_running || !m_audioCodecContext || !m_swrContext || !m_audioFrame) return;
+        if (frame.samples.empty()) return;
+
+        QMutexLocker lock(&m_audioMutex);
+        m_audioFifo.insert(m_audioFifo.end(), frame.samples.begin(), frame.samples.end());
+
+        int frameSize = m_audioFrame->nb_samples;
+        int totalFloatsPerFrame = frameSize * m_settings.audioChannels;
+
+        while (static_cast<int>(m_audioFifo.size()) >= totalFloatsPerFrame) {
+            av_frame_make_writable(m_audioFrame);
+
+            const uint8_t* inData[1] = { reinterpret_cast<const uint8_t*>(m_audioFifo.data()) };
+            int converted = swr_convert(
+                m_swrContext,
+                m_audioFrame->data,
+                frameSize,
+                inData,
+                frameSize
+            );
+
+            m_audioFrame->pts = m_audioPts;
+            m_audioPts += frameSize;
+
+            m_audioFifo.erase(m_audioFifo.begin(), m_audioFifo.begin() + totalFloatsPerFrame);
+
+            if (converted > 0) {
+                encodeAudioFrame(m_audioFrame);
+            }
+        }
+    }
+
+    void encodeAudioFrame(AVFrame* frame) {
+        if (!m_audioCodecContext) return;
+
+        int ret = avcodec_send_frame(m_audioCodecContext, frame);
+        if (ret < 0) {
+            char errbuf[256];
+            av_strerror(ret, errbuf, sizeof(errbuf));
+            qWarning() << "Error sending audio frame to encoder:" << errbuf;
+            return;
+        }
+
+        while (ret >= 0) {
+            ret = avcodec_receive_packet(m_audioCodecContext, m_audioPacket);
+            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+                break;
+            }
+            if (ret < 0) {
+                break;
+            }
+
+            processAudioPacket();
+            av_packet_unref(m_audioPacket);
+        }
+    }
+
+    void processAudioPacket() {
+        if (m_packetCallback && m_audioPacket) {
+            EncodedPacket pkt;
+            pkt.data = m_audioPacket->data;
+            pkt.size = m_audioPacket->size;
+            pkt.pts = m_audioPacket->pts;
+            pkt.dts = m_audioPacket->dts;
+            pkt.isKeyframe = true;
+            pkt.duration = m_audioPacket->duration;
+            pkt.isAudio = true;
+
+            m_packetCallback(pkt);
+        }
+
+        emit m_parent->audioPacketEncoded(m_audioPacket->pts, m_audioPacket->size);
+    }
+
+    const AVCodecParameters* audioCodecParameters() const {
+        if (m_audioCodecContext) {
+            if (!m_audioCodecpar) {
+                m_audioCodecpar = avcodec_parameters_alloc();
+            }
+            avcodec_parameters_from_context(m_audioCodecpar, m_audioCodecContext);
+            return m_audioCodecpar;
+        }
+        return nullptr;
+    }
+
+    const AVCodecParameters* videoCodecParameters() const {
+        if (m_codecContext) {
+            if (!m_videoCodecpar) {
+                m_videoCodecpar = avcodec_parameters_alloc();
+            }
+            avcodec_parameters_from_context(m_videoCodecpar, m_codecContext);
+            return m_videoCodecpar;
+        }
+        return nullptr;
+    }
     EncoderManager* m_parent;
     
     // Thread safety
@@ -680,6 +907,17 @@ private:
     AVCodecContext* m_codecContext = nullptr;
     AVPacket* m_packet = nullptr;
     SwsContext* m_swsContext = nullptr;
+    
+    // Audio FFmpeg objects
+    AVCodecContext* m_audioCodecContext = nullptr;
+    AVPacket* m_audioPacket = nullptr;
+    AVFrame* m_audioFrame = nullptr;
+    SwrContext* m_swrContext = nullptr;
+    mutable AVCodecParameters* m_audioCodecpar = nullptr;
+    mutable AVCodecParameters* m_videoCodecpar = nullptr;
+    std::vector<float> m_audioFifo;
+    int64_t m_audioPts = 0;
+    mutable QMutex m_audioMutex;
     
     // Encoder info
     QString m_activeEncoderName;
@@ -744,6 +982,18 @@ bool EncoderManager::isInitialized() const {
 
 void EncoderManager::pushFrame(const QImage& image, int64_t pts) {
     m_impl->pushFrame(image, pts);
+}
+
+void EncoderManager::pushAudioFrame(const AudioFrame& frame) {
+    m_impl->pushAudioFrame(frame);
+}
+
+const AVCodecParameters* EncoderManager::audioCodecParameters() const {
+    return m_impl->audioCodecParameters();
+}
+
+const AVCodecParameters* EncoderManager::videoCodecParameters() const {
+    return m_impl->videoCodecParameters();
 }
 
 int EncoderManager::queueSize() const {

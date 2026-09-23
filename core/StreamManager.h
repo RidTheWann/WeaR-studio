@@ -71,7 +71,8 @@ struct StreamSettings {
     int videoFpsDen = 1;
     int videoBitrate = 6000;    ///< kbps
     
-    // Audio (placeholder for future)
+    // Audio
+    bool audioEnabled = true;
     int audioSampleRate = 48000;
     int audioChannels = 2;
     int audioBitrate = 160;     ///< kbps
@@ -184,7 +185,7 @@ public:
     [[nodiscard]] StreamSettings settings() const;
     
     /**
-     * @brief Set codec parameters from encoder
+     * @brief Set codec parameters from encoder (video)
      * 
      * This should be called after encoder is initialized but before
      * starting the stream. The extradata (SPS/PPS) is required for
@@ -194,6 +195,14 @@ public:
      * @return true if parameters were set successfully
      */
     bool setCodecParameters(const AVCodecParameters* codecpar);
+    bool setVideoCodecParameters(const AVCodecParameters* codecpar);
+
+    /**
+     * @brief Set audio codec parameters from audio encoder
+     * @param codecpar Audio codec parameters
+     * @return true if parameters were set successfully
+     */
+    bool setAudioCodecParameters(const AVCodecParameters* codecpar);
 
     // =========================================================================
     // Stream Control
@@ -252,17 +261,30 @@ public:
      * @param pts Presentation timestamp (encoder timebase)
      * @param dts Decoding timestamp (encoder timebase)
      * @param isKeyframe True if this is a keyframe
+     * @param isAudio True if this is an audio packet
      * @return true if packet was queued
      */
     bool writePacket(const uint8_t* data, int size, 
-                     int64_t pts, int64_t dts, bool isKeyframe);
+                     int64_t pts, int64_t dts, bool isKeyframe, bool isAudio = false);
+    
+    /**
+     * @brief Write an encoded audio packet to the stream
+     * @param data Packet data
+     * @param size Data size in bytes
+     * @param pts Presentation timestamp
+     * @param dts Decoding timestamp
+     * @return true if packet was queued
+     */
+    bool writeAudioPacket(const uint8_t* data, int size, 
+                          int64_t pts, int64_t dts);
     
     /**
      * @brief Write an AVPacket directly
      * @param packet FFmpeg packet (will be cloned)
+     * @param isAudio True if this is an audio packet
      * @return true if packet was queued
      */
-    bool writePacket(const AVPacket* packet);
+    bool writePacket(const AVPacket* packet, bool isAudio = false);
     
     /**
      * @brief Get current packet queue size

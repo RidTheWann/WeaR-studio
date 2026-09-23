@@ -17,6 +17,10 @@ set(CORE_SOURCES
     Scene.h
     SceneItem.cpp
     SceneItem.h
+    AudioCaptureSource.cpp
+    AudioCaptureSource.h
+    AudioMixer.cpp
+    AudioMixer.h
     PluginManager.cpp
     PluginManager.h
 )
@@ -82,10 +86,12 @@ if(WIN32)
     endif()
     
     # Get the Windows SDK version
-    if(DEFINED ENV{WindowsSDKVersion})
+    if(DEFINED CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
+        set(WINDOWS_SDK_VERSION "${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}")
+    elseif(DEFINED ENV{WindowsSDKVersion})
         string(REGEX REPLACE "\\\\$" "" WINDOWS_SDK_VERSION "$ENV{WindowsSDKVersion}")
     else()
-        set(WINDOWS_SDK_VERSION "10.0.22621.0")
+        set(WINDOWS_SDK_VERSION "10.0.26100.0")
     endif()
     
     # C++/WinRT headers location

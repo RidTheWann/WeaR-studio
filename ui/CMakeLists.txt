@@ -12,6 +12,8 @@ set(UI_SOURCES
     MainWindow.h
     PreviewWidget.cpp
     PreviewWidget.h
+    AudioMixerDock.cpp
+    AudioMixerDock.h
 )
 
 # Create the main executable

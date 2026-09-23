@@ -10,6 +10,8 @@
 #include <QQueue>
 #include <QWaitCondition>
 
+#include "ISource.h"
+
 #include <memory>
 #include <atomic>
 #include <thread>
@@ -18,9 +20,11 @@
 // Forward declarations for FFmpeg types (avoid including headers in .h)
 struct AVCodec;
 struct AVCodecContext;
+struct AVCodecParameters;
 struct AVFrame;
 struct AVPacket;
 struct SwsContext;
+struct SwrContext;
 
 namespace WeaR {
 
@@ -107,6 +111,12 @@ struct EncoderSettings {
     
     // Thread count (for software encoders)
     int threads = 0;  ///< 0 = auto
+
+    // Audio settings
+    bool audioEnabled = true;
+    int audioSampleRate = 48000;
+    int audioChannels = 2;
+    int audioBitrate = 160;     ///< kbps
 };
 
 /**
@@ -119,6 +129,7 @@ struct EncodedPacket {
     int64_t dts = 0;                 ///< Decoding timestamp
     bool isKeyframe = false;         ///< True if this is an I-frame
     int64_t duration = 0;            ///< Packet duration
+    bool isAudio = false;            ///< True if audio packet
 };
 
 /**
@@ -238,6 +249,23 @@ public:
     void pushFrame(const QImage& image, int64_t pts = -1);
     
     /**
+     * @brief Push an audio frame to the AAC encoding queue
+     * 
+     * @param frame Interleaved float audio frame
+     */
+    void pushAudioFrame(const AudioFrame& frame);
+
+    /**
+     * @brief Get audio codec parameters for muxing
+     */
+    [[nodiscard]] const AVCodecParameters* audioCodecParameters() const;
+
+    /**
+     * @brief Get video codec parameters for muxing
+     */
+    [[nodiscard]] const AVCodecParameters* videoCodecParameters() const;
+    
+    /**
      * @brief Get the number of frames waiting in queue
      * @return Queue size
      */
@@ -305,6 +333,11 @@ signals:
      * @param isKeyframe True if keyframe
      */
     void packetEncoded(int64_t pts, int size, bool isKeyframe);
+    
+    /**
+     * @brief Emitted when an audio packet is encoded
+     */
+    void audioPacketEncoded(int64_t pts, int size);
     
     /**
      * @brief Emitted when encoder encounters an error

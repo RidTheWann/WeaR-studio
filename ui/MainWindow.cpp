@@ -5,11 +5,14 @@
 
 #include "MainWindow.h"
 #include "PreviewWidget.h"
+#include "AudioMixerDock.h"
 
 #include <SceneManager.h>
 #include <StreamManager.h>
 #include <EncoderManager.h>
 #include <CaptureManager.h>
+#include <AudioMixer.h>
+#include <AudioCaptureSource.h>
 #include <PluginManager.h>
 #include <Scene.h>
 #include <SceneItem.h>
@@ -50,6 +53,14 @@ MainWindow::~MainWindow() {
     
     // Stop scene rendering
     SceneManager::instance().stopRenderLoop();
+
+    // Stop audio sources
+    if (m_desktopAudio) {
+        m_desktopAudio->stop();
+    }
+    if (m_micAudio) {
+        m_micAudio->stop();
+    }
 }
 
 void MainWindow::setupUI() {
@@ -132,11 +143,13 @@ void MainWindow::setupCentralWidget() {
 void MainWindow::setupDocks() {
     createScenesDock();
     createSourcesDock();
+    createAudioMixerDock();
     createControlsDock();
     
     // Position docks
     addDockWidget(Qt::LeftDockWidgetArea, m_scenesDock);
     addDockWidget(Qt::LeftDockWidgetArea, m_sourcesDock);
+    addDockWidget(Qt::BottomDockWidgetArea, m_audioMixerDock);
     addDockWidget(Qt::RightDockWidgetArea, m_controlsDock);
     
     // Add dock toggle actions to View menu
@@ -144,8 +157,13 @@ void MainWindow::setupDocks() {
     if (viewMenu && viewMenu->title() == "&View") {
         viewMenu->addAction(m_scenesDock->toggleViewAction());
         viewMenu->addAction(m_sourcesDock->toggleViewAction());
+        viewMenu->addAction(m_audioMixerDock->toggleViewAction());
         viewMenu->addAction(m_controlsDock->toggleViewAction());
     }
+}
+
+void MainWindow::createAudioMixerDock() {
+    m_audioMixerDock = new AudioMixerDock(this);
 }
 
 void MainWindow::createScenesDock() {
@@ -310,13 +328,30 @@ void MainWindow::initializeManagers() {
     PluginManager::instance().discoverPlugins();
     PluginManager::instance().loadAllPlugins();
     
-    // Configure encoder
+    // Configure encoder (video + audio)
     EncoderSettings encSettings;
     encSettings.width = 1920;
     encSettings.height = 1080;
     encSettings.fpsNum = 60;
     encSettings.bitrate = 6000;
+    encSettings.audioEnabled = true;
+    encSettings.audioSampleRate = 48000;
+    encSettings.audioChannels = 2;
+    encSettings.audioBitrate = 160;
     EncoderManager::instance().configure(encSettings);
+
+    // Initialize audio capture sources
+    m_desktopAudio = std::make_shared<DesktopAudioSource>();
+    m_desktopAudio->start();
+    AudioMixer::instance().addTrack(m_desktopAudio);
+
+    m_micAudio = std::make_shared<MicrophoneAudioSource>();
+    m_micAudio->start();
+    AudioMixer::instance().addTrack(m_micAudio);
+
+    if (m_audioMixerDock) {
+        m_audioMixerDock->refreshTracks();
+    }
     
     // Set up scene manager preview callback
     SceneManager::instance().setPreviewCallback([this](const QImage& frame) {
@@ -485,6 +520,10 @@ void MainWindow::onStartStreaming() {
     settings.videoHeight = 1080;
     settings.videoFpsNum = 60;
     settings.videoBitrate = 6000;
+    settings.audioEnabled = true;
+    settings.audioSampleRate = 48000;
+    settings.audioChannels = 2;
+    settings.audioBitrate = 160;
     
     StreamManager::instance().configure(settings);
     
@@ -493,10 +532,14 @@ void MainWindow::onStartStreaming() {
         EncoderManager::instance().start();
     }
     
+    // Provide codec parameters to stream muxer
+    StreamManager::instance().setVideoCodecParameters(EncoderManager::instance().videoCodecParameters());
+    StreamManager::instance().setAudioCodecParameters(EncoderManager::instance().audioCodecParameters());
+
     // Connect encoder to stream
     EncoderManager::instance().setPacketCallback([](const EncodedPacket& pkt) {
         StreamManager::instance().writePacket(pkt.data, pkt.size,
-                                              pkt.pts, pkt.dts, pkt.isKeyframe);
+                                              pkt.pts, pkt.dts, pkt.isKeyframe, pkt.isAudio);
     });
     
     // Enable encoder output from scene manager

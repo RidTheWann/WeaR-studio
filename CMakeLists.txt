@@ -142,6 +142,9 @@ add_subdirectory(core)
 add_subdirectory(ui)
 add_subdirectory(plugins)
 
+enable_testing()
+add_subdirectory(tests)
+
 # ==============================================================================
 # Summary
 # ==============================================================================
