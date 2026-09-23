@@ -88,8 +88,9 @@ public:
     bool configure(const StreamSettings& settings) {
         QMutexLocker lock(&m_mutex);
         
-        if (m_state == StreamState::Streaming || 
-            m_state == StreamState::Connecting) {
+        if (m_state == StreamState::Streaming ||
+            m_state == StreamState::Connecting ||
+            m_state == StreamState::Reconnecting) {
             qWarning() << "Cannot configure while streaming";
             return false;
         }
@@ -170,9 +171,15 @@ public:
             return false;
         }
         
-        // Transition to connecting
+        // Transition to connecting.
         setState(StreamState::Connecting);
-        
+
+        {
+            QMutexLocker statsLock(&m_statsMutex);
+            m_stats.reconnectAttempt = 0;
+            m_stats.reconnectDelayMs = 0;
+        }
+
         // Start output thread
         m_running = true;
         m_outputThread = std::thread(&Impl::outputLoop, this);
@@ -568,6 +575,8 @@ private:
                     queuedPacket.isAudio)) {
                 qWarning() << "RTMP packet send failed; reconnecting.";
                 cleanup();
+                emit m_parent->disconnected(
+                    "RTMP connection lost; reconnecting.");
                 setState(StreamState::Reconnecting);
 
                 {
