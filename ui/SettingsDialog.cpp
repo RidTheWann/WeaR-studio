@@ -21,6 +21,8 @@
 #include <QTabWidget>
 #include <QVBoxLayout>
 #include <QFileDialog>
+#include <QHBoxLayout>
+#include <algorithm>
 
 namespace WeaR {
 
@@ -32,15 +34,6 @@ void addEnumItems(QComboBox* combo, const QList<QString>& names) {
     for (int i = 0; i < names.size(); ++i) {
         combo->addItem(names.at(i), i);
     }
-}
-
-QString formatNames(RecordingFormat format) {
-    switch (format) {
-        case RecordingFormat::MP4: return QStringLiteral("MP4");
-        case RecordingFormat::MKV: return QStringLiteral("MKV");
-        case RecordingFormat::FLV: return QStringLiteral("FLV");
-    }
-    return QStringLiteral("MKV");
 }
 
 } // namespace
