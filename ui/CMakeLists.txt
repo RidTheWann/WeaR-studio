@@ -10,6 +10,10 @@ set(UI_SOURCES
     WeaRApp.h
     MainWindow.cpp
     MainWindow.h
+    SettingsDialog.cpp
+    SettingsDialog.h
+    HotkeyEdit.cpp
+    HotkeyEdit.h
     PreviewWidget.cpp
     PreviewWidget.h
     AudioMixerDock.cpp
