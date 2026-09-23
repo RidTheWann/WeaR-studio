@@ -86,3 +86,25 @@ add_test(NAME CompositingBenchmark COMMAND CompositingBenchmark)
 
 
 set_tests_properties(CompositingBenchmark PROPERTIES LABELS "benchmark")
+
+
+# Exercises the automatic SceneManager QPainter safety path using a blend mode
+# that is intentionally not migrated to the RHI shader yet.
+add_executable(SceneManagerFallbackTest
+    SceneManagerFallbackTest.cpp
+)
+
+target_link_libraries(SceneManagerFallbackTest
+    PRIVATE
+        core
+        Qt6::Gui
+)
+
+target_include_directories(SceneManagerFallbackTest
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/core
+)
+
+target_compile_features(SceneManagerFallbackTest PRIVATE cxx_std_20)
+
+add_test(NAME SceneManagerFallbackTest COMMAND SceneManagerFallbackTest)
