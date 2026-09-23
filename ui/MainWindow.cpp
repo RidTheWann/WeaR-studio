@@ -44,6 +44,7 @@
 #include <QInputDialog>
 #include <QDebug>
 #include <QSignalBlocker>
+#include <algorithm>
 
 namespace WeaR {
 
