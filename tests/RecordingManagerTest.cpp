@@ -4,6 +4,7 @@
 // ==============================================================================
 
 #include <QCoreApplication>
+#include <QColor>
 #include <QDir>
 #include <QImage>
 #include <QProcessEnvironment>
@@ -26,7 +27,7 @@ QString outputDirectory() {
         return configured;
     }
 
-    return QDir::temp().filePath(
+    return QDir(QDir::tempPath()).filePath(
         QString("wear-recording-test-%1").arg(QCoreApplication::applicationPid()));
 }
 
