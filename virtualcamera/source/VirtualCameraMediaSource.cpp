@@ -12,6 +12,7 @@
 #include <mferror.h>
 #include <mfobjects.h>
 #include <mfvirtualcamera.h>
+#include <ks.h>
 #include <shlwapi.h>
 #include <cwchar>
 
@@ -20,6 +21,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <iterator>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -453,7 +455,10 @@ private:
     std::mutex m_requestMutex;
 };
 
-class MediaSource final : public IMFMediaSourceEx {
+class MediaSource final
+    : public IMFMediaSourceEx
+    , public IMFGetService
+    , public IKsControl {
 public:
     MediaSource() {
         ++g_objectCount;
@@ -541,7 +546,9 @@ public:
         if (riid == IID_IUnknown ||
             riid == IID_IMFMediaEventGenerator ||
             riid == IID_IMFMediaSource ||
-            riid == IID_IMFMediaSourceEx) {
+            riid == IID_IMFMediaSourceEx ||
+            riid == IID_IMFGetService ||
+            riid == IID_IKsControl) {
             *ppv = static_cast<IMFMediaSourceEx*>(this);
             AddRef();
             return S_OK;
@@ -701,6 +708,67 @@ public:
         IMFMediaType* type) override {
         if (streamId != 0 || !type) return E_INVALIDARG;
         return m_stream ? m_stream->setType(type) : MF_E_SHUTDOWN;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetService(
+        REFGUID /*serviceIdentifier*/,
+        REFIID /*riid*/,
+        LPVOID* object) override {
+        if (!object) return E_POINTER;
+        *object = nullptr;
+        return MF_E_UNSUPPORTED_SERVICE;
+    }
+
+    NTSTATUS STDMETHODCALLTYPE KsProperty(
+        PKSPROPERTY property,
+        ULONG propertyLength,
+        LPVOID propertyData,
+        ULONG dataLength,
+        ULONG* bytesReturned) override {
+        if (!property || !bytesReturned) {
+            return static_cast<NTSTATUS>(E_POINTER);
+        }
+        (void)propertyLength;
+        (void)propertyData;
+        (void)dataLength;
+        *bytesReturned = 0;
+        return static_cast<NTSTATUS>(
+            HRESULT_FROM_WIN32(ERROR_SET_NOT_FOUND));
+    }
+
+    NTSTATUS STDMETHODCALLTYPE KsMethod(
+        PKSMETHOD method,
+        ULONG methodLength,
+        LPVOID methodData,
+        ULONG dataLength,
+        ULONG* bytesReturned) override {
+        if (!method || !bytesReturned) {
+            return static_cast<NTSTATUS>(E_POINTER);
+        }
+        (void)methodLength;
+        (void)methodData;
+        (void)dataLength;
+        *bytesReturned = 0;
+        return static_cast<NTSTATUS>(
+            HRESULT_FROM_WIN32(ERROR_SET_NOT_FOUND));
+    }
+
+    NTSTATUS STDMETHODCALLTYPE KsEvent(
+        PKSEVENT event,
+        ULONG eventLength,
+        LPVOID eventData,
+        ULONG dataLength,
+        ULONG* bytesReturned) override {
+        if (!bytesReturned) {
+            return static_cast<NTSTATUS>(E_POINTER);
+        }
+        (void)event;
+        (void)eventLength;
+        (void)eventData;
+        (void)dataLength;
+        *bytesReturned = 0;
+        return static_cast<NTSTATUS>(
+            HRESULT_FROM_WIN32(ERROR_SET_NOT_FOUND));
     }
 
 private:
