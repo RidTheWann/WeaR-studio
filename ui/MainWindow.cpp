@@ -411,8 +411,6 @@ void MainWindow::setupConnections() {
     connect(m_recordBtn, &QPushButton::clicked, this, &MainWindow::onRecordClicked);
     connect(m_pauseRecordBtn, &QPushButton::clicked,
             this, &MainWindow::onPauseRecordingClicked);
-    connect(m_recordBrowseBtn, &QPushButton::clicked,
-            this, &MainWindow::onBrowseRecordingPath);
     connect(m_applyFilterBtn, &QPushButton::clicked,
             this, &MainWindow::onApplyFilter);
     connect(m_transitionTypeCombo, &QComboBox::currentIndexChanged,
