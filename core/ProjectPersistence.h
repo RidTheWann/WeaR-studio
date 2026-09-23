@@ -11,6 +11,7 @@
 #include <QSizeF>
 #include <QVariant>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QString>
 
 #include <functional>
