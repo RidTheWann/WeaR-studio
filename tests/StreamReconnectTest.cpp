@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
     while (waitTimer.elapsed() < 6000) {
         {
             QMutexLocker lock(&mutex);
-            if (attempts.size() >= 2) {
+            if (attempts.size() >= 3) {
                 break;
             }
         }
@@ -69,31 +69,40 @@ int main(int argc, char** argv) {
     stream.stopStream();
 
     QMutexLocker lock(&mutex);
-    if (attempts.size() < 2) {
-        qCritical() << "Expected at least two reconnect attempts, got"
+    if (attempts.size() < 3) {
+        qCritical() << "Expected three reconnect attempts, got"
                     << attempts.size();
         return 1;
     }
 
-    if (attempts.at(0) != 1 || attempts.at(1) != 2) {
+    if (attempts.at(0) != 1 ||
+        attempts.at(1) != 2 ||
+        attempts.at(2) != 3) {
         qCritical() << "Reconnect attempt sequence mismatch:" << attempts;
         return 1;
     }
 
-    const qint64 firstDelay = timestamps.at(0);
-    const qint64 secondDelay = timestamps.at(1);
-    const qint64 interval = secondDelay - firstDelay;
+    const qint64 firstInterval = timestamps.at(1) - timestamps.at(0);
+    const qint64 secondInterval = timestamps.at(2) - timestamps.at(1);
 
-    // Connection attempts to a closed loopback port are normally immediate;
-    // allow a generous CI margin while requiring the second interval to be
-    // clearly longer than the first exponential step.
-    if (interval < 700 || interval > 4500) {
-        qCritical() << "Unexpected exponential backoff interval:" << interval;
+    // Base delay is 1s, then 2s. Allow CI/network scheduling margin while
+    // still requiring the second backoff interval to be materially longer.
+    if (firstInterval < 700 || firstInterval > 4500) {
+        qCritical() << "Unexpected first backoff interval:" << firstInterval;
+        return 1;
+    }
+
+    if (secondInterval < firstInterval + 500 ||
+        secondInterval > firstInterval + 4000) {
+        qCritical() << "Exponential backoff was not observed:"
+                    << "first=" << firstInterval
+                    << "second=" << secondInterval;
         return 1;
     }
 
     qDebug() << "STREAM_RECONNECT: PASS"
              << "attempts=" << attempts
-             << "second_minus_first_ms=" << interval;
+             << "first_interval_ms=" << firstInterval
+             << "second_interval_ms=" << secondInterval;
     return 0;
 }
