@@ -110,9 +110,9 @@ Audio:                                                   │   (Video   │
 2. **Compose**: `SceneManager` composites all scene items
    - Renders at 60 FPS via QTimer
    - Uses QPainter with `QImage::Format_ARGB32_Premultiplied`
-   - Outputs to both Preview and Encoder
+   - Fans out the same composed frame to Preview, Stream encoder, and/or RecordingManager as enabled
 
-3. **Encode**: `EncoderManager` compresses frames
+3. **Encode**: `EncoderManager` compresses frames for streaming
    - Converts QImage to YUV (NV12/YUV420P) via swscale
    - Encodes using NVENC or libx264 fallback
    - Outputs `AVPacket` via callback
@@ -120,6 +120,11 @@ Audio:                                                   │   (Video   │
 4. **Stream**: `StreamManager` transmits to RTMP server
    - Muxes packets into FLV container
    - Handles reconnection automatically
+
+5. **Record**: `RecordingManager` independently encodes and muxes local output
+   - Own video encoder configuration and bitrate
+   - Own AAC encoder configuration
+   - Writes MP4, MKV, or FLV without touching StreamManager
 
 ---
 
@@ -226,6 +231,34 @@ stream.configure(settings);
 stream.startStream();
 ```
 
+### RecordingManager
+
+**File:** `core/RecordingManager.h/.cpp`
+
+**Purpose:** Independent local recording pipeline that consumes the same composed render ticks as the streaming path without sharing its encoder or muxer.
+
+**Key Features:**
+- Thread-safe Singleton (`RecordingManager::instance()`)
+- Independent start/stop/pause/resume lifecycle
+- MP4, MKV, and FLV local output
+- Recording-specific video bitrate, rate-control, preset, encoder, and audio bitrate
+- Dedicated FFmpeg video/AAC encoders and muxer worker thread
+- Same composited frame and mixed-audio tick is fanned out once from `SceneManager`
+- Bounded raw-frame queue so slow disk/encoding cannot grow memory without limit
+- Pause excludes paused wall time from the displayed recording duration and keeps output timestamps contiguous
+
+```cpp
+auto& recorder = RecordingManager::instance();
+
+RecordingSettings settings;
+settings.format = RecordingFormat::MKV;
+settings.videoBitrate = 12000;
+settings.audioBitrate = 192;
+
+recorder.configure(settings);
+recorder.startRecording();
+```
+
 ### PluginManager
 
 **File:** `core/PluginManager.h/.cpp`
@@ -282,6 +315,22 @@ AudioFrame mixed = mixer.mixTracks(800);
 - Thread-safe FIFO audio buffer
 
 ---
+
+## Recording / Streaming Independence
+
+The two output paths are intentionally independent:
+
+```text
+                         ┌──> EncoderManager ──> StreamManager ──> RTMP
+SceneManager ─> QImage ──┤
+                         └──> RecordingManager ──> MP4 / MKV / FLV
+                AudioMixer ────────────────┬──> stream audio
+                                           └──> recording audio
+```
+
+Starting or stopping recording toggles only `SceneManager::setRecordingOutputEnabled()` and the RecordingManager. Starting or stopping streaming toggles only the stream encoder/output path. A recording therefore can run alone, streaming can run alone, or both can run at the same time.
+
+Recording uses a dedicated FFmpeg encoder context so its bitrate/quality settings do not inherit or overwrite the live-stream encoder settings. The two encoders consume the same composited render tick rather than recompositing the scene.
 
 ## Plugin System
 
