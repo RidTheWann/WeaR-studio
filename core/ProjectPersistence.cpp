@@ -238,9 +238,7 @@ QJsonObject ProjectPersistence::profileToJson(
     const EncoderSettings& encoder,
     const RecordingSettings& recording,
     const QSize& outputResolution,
-    double targetFps,
-    bool encoderOutputEnabled,
-    bool recordingOutputEnabled) {
+    double targetFps) {
     QJsonObject streamObject{
         {"url", stream.url},
         {"streamKey", stream.streamKey},
@@ -316,9 +314,7 @@ QJsonObject ProjectPersistence::profileToJson(
         {"output", QJsonObject{
             {"width", outputResolution.width()},
             {"height", outputResolution.height()},
-            {"fps", targetFps},
-            {"encoderOutputEnabled", encoderOutputEnabled},
-            {"recordingOutputEnabled", recordingOutputEnabled}
+            {"fps", targetFps}
         }},
         {"stream", streamObject},
         {"encoder", encoderObject},
@@ -335,8 +331,6 @@ bool ProjectPersistence::profileFromJson(
     RecordingSettings& recording,
     QSize& outputResolution,
     double& targetFps,
-    bool& encoderOutputEnabled,
-    bool& recordingOutputEnabled,
     QString* error) {
     if (root.value("schema").toString() != QString::fromUtf8(kProfileSchema)) {
         if (error) *error = "Unsupported profile schema.";
@@ -353,11 +347,7 @@ bool ProjectPersistence::profileFromJson(
         output.value("width").toInt(outputResolution.width()),
         output.value("height").toInt(outputResolution.height()));
     targetFps = output.value("fps").toDouble(targetFps);
-    encoderOutputEnabled =
-        output.value("encoderOutputEnabled").toBool(encoderOutputEnabled);
-    recordingOutputEnabled =
-        output.value("recordingOutputEnabled").toBool(recordingOutputEnabled);
-
+undefined
     if (!outputResolution.isValid() || targetFps <= 0.0) {
         if (error) *error = "Profile output resolution/FPS is invalid.";
         return false;
@@ -494,14 +484,10 @@ bool ProjectPersistence::loadProfile(
     RecordingSettings nextRecording = recording;
     QSize nextResolution = outputResolution;
     double nextFps = targetFps;
-    bool nextEncoderOutput = encoderOutputEnabled;
-    bool nextRecordingOutput = recordingOutputEnabled;
-
     if (!profileFromJson(
             document.object(),
             nextStream, nextEncoder, nextRecording,
             nextResolution, nextFps,
-            nextEncoderOutput, nextRecordingOutput,
             error)) {
         return false;
     }
@@ -511,8 +497,6 @@ bool ProjectPersistence::loadProfile(
     recording = nextRecording;
     outputResolution = nextResolution;
     targetFps = nextFps;
-    encoderOutputEnabled = nextEncoderOutput;
-    recordingOutputEnabled = nextRecordingOutput;
     return true;
 }
 

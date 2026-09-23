@@ -925,11 +925,7 @@ bool MainWindow::applyProfile(
     const EncoderSettings& encoder,
     const RecordingSettings& recording,
     const QSize& outputResolution,
-    double targetFps,
-    bool encoderOutputEnabled,
-    bool recordingOutputEnabled) {
-    Q_UNUSED(encoderOutputEnabled);
-    Q_UNUSED(recordingOutputEnabled);
+    double targetFps) {
 
     if (StreamManager::instance().isConnected() ||
         RecordingManager::instance().isRecording() ||
@@ -968,8 +964,6 @@ void MainWindow::onSaveProfile() {
             RecordingManager::instance().settings(),
             SceneManager::instance().outputResolution(),
             SceneManager::instance().targetFps(),
-            SceneManager::instance().isEncoderOutputEnabled(),
-            SceneManager::instance().isRecordingOutputEnabled(),
             &error)) {
         QMessageBox::warning(this, "Save Profile", error);
         return;
@@ -989,22 +983,18 @@ void MainWindow::onLoadProfile() {
     RecordingSettings recording = RecordingManager::instance().settings();
     QSize outputResolution = SceneManager::instance().outputResolution();
     double targetFps = SceneManager::instance().targetFps();
-    bool encoderOutput = SceneManager::instance().isEncoderOutputEnabled();
-    bool recordingOutput = SceneManager::instance().isRecordingOutputEnabled();
 
     QString error;
     if (!ProjectPersistence::loadProfile(
             path, stream, encoder, recording,
-            outputResolution, targetFps,
-            encoderOutput, recordingOutput, &error)) {
+            outputResolution, targetFps, &error)) {
         QMessageBox::warning(this, "Load Profile", error);
         return;
     }
 
     if (!applyProfile(
             stream, encoder, recording,
-            outputResolution, targetFps,
-            encoderOutput, recordingOutput)) {
+            outputResolution, targetFps)) {
         QMessageBox::warning(
             this, "Load Profile",
             "The profile settings could not be applied.");

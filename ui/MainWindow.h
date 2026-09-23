@@ -99,9 +99,7 @@ private:
         const EncoderSettings& encoder,
         const RecordingSettings& recording,
         const QSize& outputResolution,
-        double targetFps,
-        bool encoderOutputEnabled,
-        bool recordingOutputEnabled);
+        double targetFps);
     
     // Central widget
     PreviewWidget* m_previewWidget = nullptr;

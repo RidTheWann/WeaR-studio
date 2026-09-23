@@ -36,8 +36,6 @@ public:
         const RecordingSettings& recording,
         const QSize& outputResolution,
         double targetFps,
-        bool encoderOutputEnabled,
-        bool recordingOutputEnabled,
         QString* error = nullptr);
 
     static bool loadProfile(
@@ -47,8 +45,6 @@ public:
         RecordingSettings& recording,
         QSize& outputResolution,
         double& targetFps,
-        bool& encoderOutputEnabled,
-        bool& recordingOutputEnabled,
         QString* error = nullptr);
 
     static bool saveSceneCollection(
