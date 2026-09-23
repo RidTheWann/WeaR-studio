@@ -5,6 +5,7 @@
 #include "Scene.h"
 
 #include <QPainter>
+#include "IFilter.h"
 #include <QDebug>
 #include <algorithm>
 
