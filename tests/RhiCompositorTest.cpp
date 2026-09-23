@@ -27,6 +27,10 @@ public:
     explicit TestSource(const QImage& frame)
         : m_frame(frame) {}
 
+    void setFrame(const QImage& frame) {
+        m_frame = frame;
+    }
+
     PluginInfo info() const override {
         return {
             QStringLiteral("wear.test.image"),
