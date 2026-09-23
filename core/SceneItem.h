@@ -123,6 +123,8 @@ public:
      * @brief Get unique item ID
      */
     [[nodiscard]] QUuid id() const { return m_id; }
+
+    void setId(const QUuid& id) { if (!id.isNull()) m_id = id; }
     
     /**
      * @brief Get item display name

@@ -156,3 +156,46 @@ target_include_directories(SceneTransitionTest
 target_compile_features(SceneTransitionTest PRIVATE cxx_std_20)
 
 add_test(NAME SceneTransitionTest COMMAND SceneTransitionTest)
+
+    
+add_executable(GlobalHotkeyManagerTest
+    GlobalHotkeyManagerTest.cpp
+)
+
+target_link_libraries(GlobalHotkeyManagerTest
+    PRIVATE
+        core
+        Qt6::Core
+        Qt6::Gui
+)
+
+target_include_directories(GlobalHotkeyManagerTest
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/core
+)
+
+target_compile_features(GlobalHotkeyManagerTest PRIVATE cxx_std_20)
+
+add_test(NAME GlobalHotkeyManagerTest COMMAND GlobalHotkeyManagerTest)
+
+
+add_executable(ProjectPersistenceTest
+    ProjectPersistenceTest.cpp
+)
+
+target_link_libraries(ProjectPersistenceTest
+    PRIVATE
+        core
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+)
+
+target_include_directories(ProjectPersistenceTest
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/core
+)
+
+target_compile_features(ProjectPersistenceTest PRIVATE cxx_std_20)
+
+add_test(NAME ProjectPersistenceTest COMMAND ProjectPersistenceTest)

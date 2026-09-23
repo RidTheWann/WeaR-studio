@@ -28,6 +28,10 @@ set(CORE_SOURCES
     IRhiFilter.h
     BuiltinRhiFilters.cpp
     BuiltinRhiFilters.h
+    GlobalHotkeyManager.cpp
+    GlobalHotkeyManager.h
+    ProjectPersistence.cpp
+    ProjectPersistence.h
     RhiCompositor.cpp
     RhiCompositor.h
     PluginManager.cpp
