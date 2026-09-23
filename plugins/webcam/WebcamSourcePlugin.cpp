@@ -133,28 +133,71 @@ bool setRequestedOutputType(
     const WeaR::SourceConfig& config) {
     if (!reader) return false;
 
-    ComPtr<IMFMediaType> outputType;
-    if (FAILED(MFCreateMediaType(&outputType))) return false;
-    if (FAILED(outputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video))) return false;
-    if (FAILED(outputType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32))) return false;
+    auto makeRgb32Type = [&](bool includeRequestedMode) -> ComPtr<IMFMediaType> {
+        ComPtr<IMFMediaType> outputType;
+        if (FAILED(MFCreateMediaType(&outputType))) {
+            return nullptr;
+        }
 
-    const QSize resolution =
-        config.resolution.isValid() ? config.resolution : QSize(1280, 720);
-    if (FAILED(MFSetAttributeSize(
-            outputType.Get(),
-            MF_MT_FRAME_SIZE,
-            static_cast<UINT32>(resolution.width()),
-            static_cast<UINT32>(resolution.height())))) return false;
+        if (FAILED(outputType->SetGUID(
+                MF_MT_MAJOR_TYPE, MFMediaType_Video))) {
+            return nullptr;
+        }
+        if (FAILED(outputType->SetGUID(
+                MF_MT_SUBTYPE, MFVideoFormat_RGB32))) {
+            return nullptr;
+        }
 
-    if (config.fps > 0.0) {
-        const UINT32 numerator =
-            static_cast<UINT32>(std::lround(config.fps * 1000.0));
-        if (FAILED(MFSetAttributeRatio(
-                outputType.Get(), MF_MT_FRAME_RATE, numerator, 1000))) return false;
+        if (includeRequestedMode) {
+            const QSize resolution =
+                config.resolution.isValid()
+                    ? config.resolution
+                    : QSize(1280, 720);
+
+            if (FAILED(MFSetAttributeSize(
+                    outputType.Get(),
+                    MF_MT_FRAME_SIZE,
+                    static_cast<UINT32>(resolution.width()),
+                    static_cast<UINT32>(resolution.height())))) {
+                return nullptr;
+            }
+
+            if (config.fps > 0.0) {
+                const UINT32 numerator =
+                    static_cast<UINT32>(std::lround(config.fps * 1000.0));
+                if (FAILED(MFSetAttributeRatio(
+                        outputType.Get(),
+                        MF_MT_FRAME_RATE,
+                        numerator,
+                        1000))) {
+                    return nullptr;
+                }
+            }
+        }
+
+        return outputType;
+    };
+
+    // First try the exact requested mode.
+    ComPtr<IMFMediaType> requestedType = makeRgb32Type(true);
+    if (requestedType &&
+        SUCCEEDED(reader->SetCurrentMediaType(
+            MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+            nullptr,
+            requestedType.Get()))) {
+        return true;
     }
 
-    return SUCCEEDED(reader->SetCurrentMediaType(
-        MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, outputType.Get()));
+    // A camera may reject a precise size/FPS combination while still
+    // supporting Source Reader's RGB32 conversion. Retry with only RGB32
+    // specified so compressed/native camera formats are never copied as if
+    // they were raw 4-byte pixels.
+    ComPtr<IMFMediaType> rgb32Type = makeRgb32Type(false);
+    return rgb32Type &&
+           SUCCEEDED(reader->SetCurrentMediaType(
+               MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+               nullptr,
+               rgb32Type.Get()));
 }
 
 QString makeCaptureError(const QString& operation, HRESULT hr) {
@@ -368,7 +411,7 @@ private:
                 m_parent->publishFrame(
                     frame,
                     timestamp > 0
-                        ? static_cast<int64_t>(timestamp)
+                        ? static_cast<int64_t>(timestamp / 10)
                         : QDateTime::currentMSecsSinceEpoch() * 1000);
             }
 
