@@ -392,6 +392,7 @@ public:
         QRhiCommandBuffer* cb = nullptr;
         const auto beginResult = m_rhi->beginOffscreenFrame(&cb);
         if (beginResult != QRhi::FrameOpSuccess || !cb) {
+            updates->release();
             readbackBatch->release();
             m_lastError = QStringLiteral("QRhi beginOffscreenFrame() failed.");
             return false;
@@ -428,11 +429,7 @@ public:
         if (endResult != QRhi::FrameOpSuccess) {
             m_lastError = QStringLiteral(
                 "QRhi endOffscreenFrame() failed.");
-            if (m_rhi->isDeviceLost()) {
-                m_lastError = QStringLiteral(
-                    "Qt RHI reported a lost graphics device.");
-                reset();
-            }
+            reset();
             return false;
         }
 
@@ -447,6 +444,7 @@ public:
             readback.pixelSize != outputSize) {
             m_lastError = QStringLiteral(
                 "RHI texture readback returned no complete frame.");
+            reset();
             return false;
         }
 
