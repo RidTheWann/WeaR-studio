@@ -33,6 +33,8 @@ private:
     void loadFromManagers();
     bool applyToManagers();
 
+    void accept() override;
+
     QTabWidget* m_tabs = nullptr;
     QDialogButtonBox* m_buttons = nullptr;
 
