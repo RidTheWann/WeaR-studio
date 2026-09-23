@@ -58,6 +58,9 @@ MainWindow::MainWindow(QWidget* parent)
 }
 
 MainWindow::~MainWindow() {
+    // Stop external camera output before tearing down the render pipeline.
+    VirtualCameraManager::instance().stop();
+
     // Finalize the independent recording file before shutting down the render loop.
     SceneManager::instance().setRecordingOutputEnabled(false);
     RecordingManager::instance().stopRecording();
