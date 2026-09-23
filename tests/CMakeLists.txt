@@ -43,19 +43,28 @@ target_compile_features(RecordingManagerTest PRIVATE cxx_std_20)
 add_test(NAME RecordingManagerTest COMMAND RecordingManagerTest)
 
 
+set(WEAR_RHI_SHADER_FILES
+    "${CMAKE_SOURCE_DIR}/shaders/rhi_composite.vert"
+    "${CMAKE_SOURCE_DIR}/shaders/rhi_composite.frag"
+)
+
+function(add_wear_rhi_shaders target)
+    qt_add_shaders(${target} "wear_rhi_shaders"
+        PREFIX "/wear/rhi"
+        BASE "${CMAKE_SOURCE_DIR}"
+        PRECOMPILE
+        OPTIMIZED
+        FILES
+            ${WEAR_RHI_SHADER_FILES}
+    )
+endfunction()
+
 # GPU compositor integration/visual regression coverage.
 add_executable(RhiCompositorTest
     RhiCompositorTest.cpp
 )
 
-qt_add_shaders(RhiCompositorTest "wear_rhi_shaders"
-    PREFIX "/wear/rhi"
-    PRECOMPILE
-    OPTIMIZED
-    FILES
-        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.vert
-        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.frag
-)
+add_wear_rhi_shaders(RhiCompositorTest)
 
 target_link_libraries(RhiCompositorTest
     PRIVATE
@@ -78,14 +87,7 @@ add_executable(CompositingBenchmark
     CompositingBenchmark.cpp
 )
 
-qt_add_shaders(CompositingBenchmark "wear_rhi_shaders"
-    PREFIX "/wear/rhi"
-    PRECOMPILE
-    OPTIMIZED
-    FILES
-        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.vert
-        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.frag
-)
+add_wear_rhi_shaders(CompositingBenchmark)
 
 target_link_libraries(CompositingBenchmark
     PRIVATE
@@ -112,14 +114,7 @@ add_executable(SceneManagerFallbackTest
     SceneManagerFallbackTest.cpp
 )
 
-qt_add_shaders(SceneManagerFallbackTest "wear_rhi_shaders"
-    PREFIX "/wear/rhi"
-    PRECOMPILE
-    OPTIMIZED
-    FILES
-        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.vert
-        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.frag
-)
+add_wear_rhi_shaders(SceneManagerFallbackTest)
 
 target_link_libraries(SceneManagerFallbackTest
     PRIVATE
