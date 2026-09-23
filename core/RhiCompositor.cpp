@@ -13,7 +13,6 @@
 #include <QFile>
 #include <QOffscreenSurface>
 #include <QOpenGLContext>
-#include <QShader>
 #include <QVector>
 #include <QVulkanInstance>
 
@@ -25,6 +24,7 @@
 #include <vector>
 
 #include <rhi/qrhi.h>
+#include <QtGui/qshader.h>
 
 namespace WeaR {
 
