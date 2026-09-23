@@ -420,7 +420,6 @@ void MainWindow::setupConnections() {
             this, &MainWindow::onTransitionDurationChanged);
 
     auto& hotkeys = GlobalHotkeyManager::instance();
-    hotkeys.initialize();
 
     hotkeys.setCallback(GlobalHotkeyAction::StartStream, [this]() {
         if (!StreamManager::instance().isConnected()) {
@@ -891,7 +890,9 @@ void MainWindow::onStartStreaming() {
         StreamManager::instance().writePacket(
             pkt.data, pkt.size, pkt.pts, pkt.dts,
             pkt.isKeyframe, pkt.isAudio);
-    });
+    });    hotkeys.initialize();
+
+
 
     SceneManager::instance().setEncoderOutputEnabled(true);
 
