@@ -27,13 +27,24 @@ extern "C" {
 
 namespace {
 
+struct InterruptState {
+    const std::atomic<bool>* running = nullptr;
+    std::chrono::steady_clock::time_point deadline =
+        std::chrono::steady_clock::time_point::max();
+};
+
 int ffmpegInterruptCallback(void* opaque) {
-    const auto* running = static_cast<const std::atomic<bool>*>(opaque);
-    if (!running) {
-        return 0;
+    const auto* state = static_cast<const InterruptState*>(opaque);
+
+    if (!state || !state->running) {
+        return 1;
     }
 
-    return running->load(std::memory_order_relaxed) ? 0 : 1;
+    if (!state->running->load(std::memory_order_relaxed)) {
+        return 1;
+    }
+
+    return std::chrono::steady_clock::now() >= state->deadline ? 1 : 0;
 }
 
 } // namespace
@@ -335,8 +346,16 @@ private:
         }
 
         // Make all blocking FFmpeg I/O interruptible when StreamManager stops.
-        m_formatContext->interrupt_callback.callback = &ffmpegInterruptCallback;
-        m_formatContext->interrupt_callback.opaque = &m_running;
+        m_interruptState.running = &m_running;
+        m_interruptState.deadline =
+            std::chrono::steady_clock::now() +
+            std::chrono::seconds(
+                std::max(1, m_settings.connectTimeout) + 1);
+
+        m_formatContext->interrupt_callback.callback =
+            &ffmpegInterruptCallback;
+        m_formatContext->interrupt_callback.opaque =
+            &m_interruptState;
 
         // Create video stream
         m_videoStream = avformat_new_stream(m_formatContext, nullptr);
@@ -392,13 +411,14 @@ private:
         AVDictionary* options = nullptr;
         
         // Connection timeout
-        const QString timeout =
-            QString::number(m_settings.connectTimeout * 1000000);
-        av_dict_set(&options, "timeout", timeout.toUtf8().constData(), 0);
+        const auto timeoutUs =
+            QString::number(
+                std::max(1, m_settings.connectTimeout) * 1000000);
+        av_dict_set(&options, "timeout", timeoutUs.toUtf8().constData(), 0);
 
         // Bound generic FFmpeg read/write waits as well as the connect timeout.
         av_dict_set(&options, "rw_timeout",
-                    timeout.toUtf8().constData(), 0);
+                    timeoutUs.toUtf8().constData(), 0);
 
         // TCP buffer size
         QString bufSize = QString::number(m_settings.sendBufferSize);
@@ -424,6 +444,12 @@ private:
                 logAvError("Failed to open output URL", ret);
                 return false;
             }
+
+            // The connection deadline only applies during initial network setup.
+            // Keep the interrupt callback active for cancellation through stop(),
+            // but do not let the connection deadline expire during normal streaming.
+            m_interruptState.deadline =
+                std::chrono::steady_clock::time_point::max();
         }
         
         // Write stream header
@@ -722,6 +748,8 @@ private:
     std::atomic<StreamState> m_state{StreamState::Stopped};
     std::atomic<bool> m_running{false};
     std::thread m_outputThread;
+
+    InterruptState m_interruptState;
     
     // Settings
     StreamSettings m_settings;
