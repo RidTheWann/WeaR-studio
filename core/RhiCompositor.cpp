@@ -11,7 +11,6 @@
 
 #include <QDebug>
 #include <QFile>
-#include <QGuiApplication>
 #include <QOffscreenSurface>
 #include <QOpenGLContext>
 #include <QShader>
@@ -291,6 +290,14 @@ public:
                 resources.textureSize = uploadImage.size();
 
                 destroyRhiResource(resources.srb);
+            }
+
+            if (!resources.srb) {
+                if (!resources.texture) {
+                    m_lastError = QStringLiteral("RHI source texture is unavailable.");
+                    return false;
+                }
+
                 resources.srb = m_rhi->newShaderResourceBindings();
                 if (!resources.srb) {
                     m_lastError = QStringLiteral("Failed to allocate RHI shader bindings.");
@@ -561,12 +568,6 @@ private:
             return false;
         }
 
-        if (!m_rhi->isFeatureSupported(QRhi::ReadBackNonUniformBuffer) &&
-            !m_rhi->isFeatureSupported(QRhi::TextureSize)) {
-            // This condition is intentionally not fatal on all backends. The
-            // actual output texture readback is validated at runtime.
-        }
-
         qInfo() << "RHI compositor initialized using" << m_backendName;
         return true;
     }
@@ -772,7 +773,6 @@ private:
     QShader m_vertexShader;
     QShader m_fragmentShader;
 
-    QOffscreenSurface* m_dummy = nullptr;
     std::unique_ptr<QOffscreenSurface> m_fallbackSurface;
     std::unique_ptr<QVulkanInstance> m_vulkanInstance;
 
