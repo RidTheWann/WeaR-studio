@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
       - name: Checkout repository
@@ -40,6 +40,15 @@ jobs:
           "FFMPEG_ROOT=$env:GITHUB_WORKSPACE\ffmpeg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
           "PATH=$env:GITHUB_WORKSPACE\ffmpeg\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
+      - name: Verify Visual Studio toolchain
+        shell: pwsh
+        run: |
+          cmake --help | Select-String "Visual Studio"
+          $vsRoot = Join-Path $env:ProgramFiles "Microsoft Visual Studio\\2022"
+          if (-not (Test-Path $vsRoot)) {
+            throw "Visual Studio 2022 installation root was not found: $vsRoot"
+          }
+          Get-ChildItem $vsRoot -Directory | Select-Object -ExpandProperty FullName
       - name: Configure CMake
         shell: pwsh
         run: |
@@ -49,7 +58,7 @@ jobs:
             -A x64 `
             "-DCMAKE_PREFIX_PATH=$env:Qt6_DIR" `
             "-DFFMPEG_ROOT=$env:FFMPEG_ROOT" `
-            "-DCMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION=10.0.26100.0"
+            "-DFFMPEG_ROOT=$env:FFMPEG_ROOT"
 
       - name: Build Debug
         shell: pwsh
