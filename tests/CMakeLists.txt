@@ -53,7 +53,6 @@ function(add_wear_rhi_shaders target)
         PREFIX "/wear/rhi"
         BASE "${CMAKE_SOURCE_DIR}"
         PRECOMPILE
-        OPTIMIZED
         FILES
             ${WEAR_RHI_SHADER_FILES}
     )
