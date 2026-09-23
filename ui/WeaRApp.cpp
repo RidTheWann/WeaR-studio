@@ -4,6 +4,7 @@
 // ==============================================================================
 
 #include "WeaRApp.h"
+#include <AppDiagnostics.h>
 
 #include <QStyleFactory>
 #include <QFont>
@@ -14,6 +15,11 @@ namespace WeaR {
 WeaRApp::WeaRApp(int& argc, char** argv)
     : QApplication(argc, argv)
 {
+    // Start persistent diagnostics before initializing any managers.
+    // The logger lives outside the install directory so normal users can
+    // always write logs even when the app is installed under Program Files.
+    AppDiagnostics::initialize();
+
     // Set application metadata
     setApplicationName(displayName());
     setApplicationVersion(version());
