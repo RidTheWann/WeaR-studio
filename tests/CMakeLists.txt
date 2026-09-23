@@ -170,6 +170,7 @@ target_include_directories(StreamReconnectTest
 target_compile_features(StreamReconnectTest PRIVATE cxx_std_20)
 
 add_test(NAME StreamReconnectTest COMMAND StreamReconnectTest)
+set_tests_properties(StreamReconnectTest PROPERTIES TIMEOUT 20)
 
 
 add_executable(AppDiagnosticsTest
