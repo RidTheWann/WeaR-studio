@@ -63,7 +63,7 @@ static ComPtr<ID3D11Texture2D> GetTextureFromSurface(
     const IDirect3DSurface& surface,
     ComPtr<ID3D11Device>& device
 ) {
-    auto access = surface.as<Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
+    auto access = surface.as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
     ComPtr<ID3D11Texture2D> texture;
     HRESULT hr = access->GetInterface(IID_PPV_ARGS(&texture));
     if (FAILED(hr)) {
