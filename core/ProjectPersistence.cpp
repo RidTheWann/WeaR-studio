@@ -13,6 +13,8 @@
 #include <QJsonArray>
 #include <QPointF>
 #include <QSaveFile>
+#include <QSet>
+#include <QJsonValue>
 
 #include <algorithm>
 #include <cmath>
@@ -730,16 +732,23 @@ bool ProjectPersistence::loadSceneCollection(
     };
 
     QList<ValidatedScene> validatedScenes;
+    QMap<QString, QJsonObject> sourceFingerprints;
+    QMap<QString, QJsonObject> filterFingerprints;
+    QSet<QUuid> sceneIds;
+    QSet<QUuid> itemIds;
 
     // Validate all source/filter identities and data before mutating the
     // current scene graph.
     for (const QJsonValue& sceneValue : scenesJson) {
         const QJsonObject sceneObject = sceneValue.toObject();
         const QUuid sceneId(sceneObject.value("id").toString());
-        if (sceneId.isNull()) {
-            if (error) *error = "Scene collection contains an invalid scene UUID.";
+        if (sceneId.isNull() || sceneIds.contains(sceneId)) {
+            if (error) {
+                *error = "Scene collection contains a missing or duplicate scene UUID.";
+            }
             return false;
         }
+        sceneIds.insert(sceneId);
 
         ValidatedScene validated;
         validated.id = sceneId;
@@ -771,13 +780,16 @@ bool ProjectPersistence::loadSceneCollection(
             item.blendMode = static_cast<BlendMode>(
                 itemObject.value("blendMode").toInt(0));
 
-            if (item.id.isNull() || item.name.isEmpty() ||
+            if (item.id.isNull() || itemIds.contains(item.id) ||
+                item.name.isEmpty() ||
                 item.blendMode < BlendMode::Normal ||
                 item.blendMode > BlendMode::Additive) {
-                if (error) *error = "Scene collection contains malformed item data.";
+                if (error) {
+                    *error = "Scene collection contains a missing or duplicate item UUID.";
+                }
                 return false;
             }
-
+            itemIds.insert(item.id);
             if (!transformFromJson(
                     itemObject.value("transform").toObject(),
                     item.transform,
@@ -806,6 +818,19 @@ bool ProjectPersistence::loadSceneCollection(
                 return false;
             }
 
+            if (sourceFingerprints.contains(sourceId)) {
+                if (sourceFingerprints.value(sourceId) != sourceObject) {
+                    if (error) {
+                        *error = QStringLiteral(
+                            "Source plugin '%1' is shared by multiple items with conflicting configuration.")
+                            .arg(sourceId);
+                    }
+                    return false;
+                }
+            } else {
+                sourceFingerprints.insert(sourceId, sourceObject);
+            }
+
             if (const auto* capture = dynamic_cast<const CaptureManager*>(item.source)) {
                 Q_UNUSED(capture);
             }
@@ -816,6 +841,11 @@ bool ProjectPersistence::loadSceneCollection(
                 item.filterObject = itemObject.value("filter").toObject();
                 const QString filterId =
                     item.filterObject.value("pluginId").toString();
+                if (filterId.isEmpty()) {
+                    if (error) *error = "Scene item filter is missing a plugin ID.";
+                    return false;
+                }
+
                 item.filter = filterResolver ? filterResolver(filterId) : nullptr;
                 if (!item.filter) {
                     if (error) {
@@ -823,6 +853,19 @@ bool ProjectPersistence::loadSceneCollection(
                             "Filter is unavailable: %1").arg(filterId);
                     }
                     return false;
+                }
+
+                if (filterFingerprints.contains(filterId)) {
+                    if (filterFingerprints.value(filterId) != item.filterObject) {
+                        if (error) {
+                            *error = QStringLiteral(
+                                "Filter plugin '%1' is shared by multiple items with conflicting parameters.")
+                                .arg(filterId);
+                        }
+                        return false;
+                    }
+                } else {
+                    filterFingerprints.insert(filterId, item.filterObject);
                 }
             }
 
@@ -858,6 +901,47 @@ bool ProjectPersistence::loadSceneCollection(
             if (!ProjectPersistence::sourceConfigFromJson(
                     validatedItem.sourceObject, sourceConfig, loadError)) {
                 return false;
+            }
+
+            if (auto* capture = dynamic_cast<CaptureManager*>(validatedItem.source)) {
+                const QString targetId =
+                    validatedItem.sourceObject.value("captureTargetId").toString();
+
+                if (!targetId.isEmpty()) {
+                    bool foundTarget = false;
+                    for (const CaptureTarget& target :
+                         capture->enumerateTargets()) {
+                        if (target.id == targetId) {
+                            if (!capture->setTarget(target)) {
+                                if (loadError) {
+                                    *loadError = QStringLiteral(
+                                        "Failed to restore capture target '%1'.")
+                                        .arg(targetId);
+                                }
+                                return false;
+                            }
+                            foundTarget = true;
+                            break;
+                        }
+                    }
+                    if (!foundTarget) {
+                        if (loadError) {
+                            *loadError = QStringLiteral(
+                                "Capture target is unavailable: %1")
+                                .arg(targetId);
+                        }
+                        return false;
+                    }
+                }
+
+                if (validatedItem.sourceObject.contains("showCursor")) {
+                    capture->setShowCursor(
+                        validatedItem.sourceObject.value("showCursor").toBool());
+                }
+                if (validatedItem.sourceObject.contains("showBorder")) {
+                    capture->setShowBorder(
+                        validatedItem.sourceObject.value("showBorder").toBool());
+                }
             }
 
             if (!validatedItem.source->configure(sourceConfig)) {
