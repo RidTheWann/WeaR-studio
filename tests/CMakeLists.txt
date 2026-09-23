@@ -156,3 +156,43 @@ target_include_directories(SceneTransitionTest
 target_compile_features(SceneTransitionTest PRIVATE cxx_std_20)
 
 add_test(NAME SceneTransitionTest COMMAND SceneTransitionTest)
+
+
+add_executable(StreamReconnectTest
+    StreamReconnectTest.cpp
+)
+
+target_link_libraries(StreamReconnectTest
+    PRIVATE
+        core
+        Qt6::Core
+)
+
+target_include_directories(StreamReconnectTest
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/core
+)
+
+target_compile_features(StreamReconnectTest PRIVATE cxx_std_20)
+
+add_test(NAME StreamReconnectTest COMMAND StreamReconnectTest)
+
+
+add_executable(AppDiagnosticsTest
+    AppDiagnosticsTest.cpp
+)
+
+target_link_libraries(AppDiagnosticsTest
+    PRIVATE
+        core
+        Qt6::Core
+)
+
+target_include_directories(AppDiagnosticsTest
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/core
+)
+
+target_compile_features(AppDiagnosticsTest PRIVATE cxx_std_20)
+
+add_test(NAME AppDiagnosticsTest COMMAND AppDiagnosticsTest)
