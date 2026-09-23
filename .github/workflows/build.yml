@@ -23,12 +23,17 @@ jobs:
           arch: win64_msvc2022_64
           modules: qtmultimedia
 
-      - name: Setup FFmpeg 6.1.1
-        id: setup-ffmpeg
-        uses: FedericoCarboni/setup-ffmpeg@v3
-        with:
-          ffmpeg-version: "6.1.1"
-          linking: shared
+      - name: Install FFmpeg development build
+        shell: pwsh
+        run: |
+          $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full-shared.7z"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.7z
+          7z x ffmpeg.7z -offmpeg-extract -y | Out-Null
+          $root = Get-ChildItem ffmpeg-extract -Directory | Select-Object -First 1
+          if (-not $root) { throw "FFmpeg archive root was not found" }
+          New-Item -ItemType Directory -Force "$env:GITHUB_WORKSPACE\ffmpeg" | Out-Null
+          Copy-Item "$($root.FullName)\*" "$env:GITHUB_WORKSPACE\ffmpeg" -Recurse -Force
+          "FFMPEG_ROOT=$env:GITHUB_WORKSPACE\ffmpeg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
 
       - name: Configure CMake
         shell: pwsh
@@ -36,7 +41,7 @@ jobs:
           if (Test-Path build) { Remove-Item -Recurse -Force build }
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
             "-DCMAKE_PREFIX_PATH=$env:Qt6_DIR" `
-            "-DFFMPEG_ROOT=${{ steps.setup-ffmpeg.outputs.ffmpeg-path }}"
+            "-DFFMPEG_ROOT=$env:FFMPEG_ROOT"
 
       - name: Build Debug
         shell: pwsh
