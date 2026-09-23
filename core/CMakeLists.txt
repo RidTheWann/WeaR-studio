@@ -93,8 +93,9 @@ if(WIN32)
     if(DEFINED ENV{WindowsSdkDir} AND NOT "$ENV{WindowsSdkDir}" STREQUAL "")
         file(TO_CMAKE_PATH "$ENV{WindowsSdkDir}" WINDOWS_SDK_DIR)
     else()
+        # Windows SDKs are installed here on GitHub-hosted Windows runners.
         set(WINDOWS_SDK_DIR
-            "$ENV{ProgramFiles(x86)}/Windows Kits/10"
+            "C:/Program Files (x86)/Windows Kits/10"
         )
     endif()
 
