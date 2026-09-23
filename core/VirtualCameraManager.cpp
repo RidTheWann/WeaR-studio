@@ -16,7 +16,9 @@
 #include <sddl.h>
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
+#include <iterator>
 #include <thread>
 #include <vector>
 
