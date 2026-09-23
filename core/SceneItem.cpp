@@ -182,15 +182,19 @@ void SceneItem::render(QPainter* painter) const {
             break;
     }
     
+    // Normalize software frames for predictable QPainter blending.
+    const QImage image = frame.convertToFormat(
+        QImage::Format_ARGB32_Premultiplied);
+
     // Scale frame to target size if different
     QRectF targetRect(0, 0, m_transform.size.width(), m_transform.size.height());
-    
-    if (frame.size() != m_transform.size.toSize()) {
+
+    if (image.size() != m_transform.size.toSize()) {
         // Draw scaled
-        painter->drawImage(targetRect, frame);
+        painter->drawImage(targetRect, image);
     } else {
         // Draw at native size
-        painter->drawImage(0, 0, frame);
+        painter->drawImage(0, 0, image);
     }
     
     painter->restore();
