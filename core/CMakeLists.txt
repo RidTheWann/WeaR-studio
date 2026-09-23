@@ -99,41 +99,34 @@ if(WIN32)
         )
     endif()
 
-    # Prefer the SDK selected by the active Visual Studio generator, but only
-    # when it actually contains the required C++/WinRT Direct3D interop header.
+    # Locate the C++/WinRT Direct3D interop header in any installed SDK.
+    set(CPPWINRT_HEADER_NAME
+        "windows.graphics.directx.direct3d11.interop.h"
+    )
     set(CPPWINRT_INCLUDE_DIR "")
-    if(DEFINED CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
-        set(_selected_cppwinrt
-            "${WINDOWS_SDK_DIR}/Include/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}/cppwinrt"
-        )
-        if(EXISTS
-            "${_selected_cppwinrt}/windows.graphics.directx.direct3d11.interop.h"
-        )
-            set(CPPWINRT_INCLUDE_DIR "${_selected_cppwinrt}")
-        endif()
-    endif()
 
-    # Otherwise choose the newest installed SDK that contains the required
-    # header. This avoids assuming a particular SDK version is installed.
-    if(NOT CPPWINRT_INCLUDE_DIR)
-        file(GLOB _cppwinrt_candidates
-            "${WINDOWS_SDK_DIR}/Include/*/cppwinrt"
-        )
-        list(SORT _cppwinrt_candidates COMPARE NATURAL ORDER DESCENDING)
+    # Search all Windows SDK include trees. This handles both:
+    #   Include/<version>/cppwinrt
+    # and layouts where the header is nested below cppwinrt.
+    file(GLOB_RECURSE _cppwinrt_headers
+        "${WINDOWS_SDK_DIR}/Include/*/${CPPWINRT_HEADER_NAME}"
+        "${WINDOWS_SDK_DIR}/Include/*/cppwinrt/${CPPWINRT_HEADER_NAME}"
+        "${WINDOWS_SDK_DIR}/Include/*/cppwinrt/*/${CPPWINRT_HEADER_NAME}"
+    )
 
-        foreach(candidate IN LISTS _cppwinrt_candidates)
-            if(EXISTS
-                "${candidate}/windows.graphics.directx.direct3d11.interop.h"
-            )
-                set(CPPWINRT_INCLUDE_DIR "${candidate}")
-                break()
-            endif()
-        endforeach()
+    if(_cppwinrt_headers)
+        list(SORT _cppwinrt_headers COMPARE NATURAL ORDER DESCENDING)
+        list(GET _cppwinrt_headers 0 _cppwinrt_header)
+        get_filename_component(CPPWINRT_INCLUDE_DIR
+            "${_cppwinrt_header}" DIRECTORY
+        )
     endif()
 
     if(NOT CPPWINRT_INCLUDE_DIR)
         message(FATAL_ERROR
-            "Could not find Windows SDK C++/WinRT headers under: "
+            "Could not find ${CPPWINRT_HEADER_NAME} under: "
+            "${WINDOWS_SDK_DIR}/Include. "
+            "Available SDK include directories: "
             "${WINDOWS_SDK_DIR}/Include"
         )
     endif()
