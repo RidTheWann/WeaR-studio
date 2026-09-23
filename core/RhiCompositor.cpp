@@ -485,7 +485,9 @@ public:
         // OpenGL fallback surfaces and Vulkan instances must outlive their RHI
         // only, so release them after QRhi is gone.
         m_fallbackSurface.reset();
+#if QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)
         m_vulkanInstance.reset();
+#endif
 
         m_backendName.clear();
         m_outputSize = {};
@@ -796,7 +798,9 @@ private:
     QShader m_fragmentShader;
 
     std::unique_ptr<QOffscreenSurface> m_fallbackSurface;
+#if QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)
     std::unique_ptr<QVulkanInstance> m_vulkanInstance;
+#endif
 
     QRhiTexture* m_outputTexture = nullptr;
     QRhiTextureRenderTarget* m_renderTarget = nullptr;
