@@ -27,6 +27,28 @@ set(CMAKE_AUTORCC ON)
 # ==============================================================================
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Optional Chromium Embedded Framework (CEF) Browser Source.
+# CEF is external and disabled by default to keep the normal build small.
+option(WEAR_ENABLE_CEF "Build the CEF Browser Source" OFF)
+set(CEF_ROOT "" CACHE PATH "Path to a CEF binary distribution")
+if(WEAR_ENABLE_CEF)
+    if(NOT WIN32)
+        message(FATAL_ERROR "WEAR_ENABLE_CEF currently requires Windows.")
+    endif()
+    if(NOT EXISTS "${CEF_ROOT}/cmake/FindCEF.cmake")
+        message(FATAL_ERROR
+            "CEF_ROOT must point to a CEF binary distribution containing cmake/FindCEF.cmake")
+    endif()
+
+    list(PREPEND CMAKE_MODULE_PATH "${CEF_ROOT}/cmake")
+    set(USE_SANDBOX OFF CACHE BOOL "Disable CEF sandbox for the initial WeaR integration" FORCE)
+    find_package(CEF REQUIRED)
+    add_subdirectory(
+        "${CEF_LIBCEF_DLL_WRAPPER_PATH}"
+        "${CMAKE_BINARY_DIR}/libcef_dll_wrapper"
+    )
+endif()
+
 # Default to Release build if not specified
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
