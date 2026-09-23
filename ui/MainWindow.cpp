@@ -608,7 +608,7 @@ void MainWindow::onRecordClicked() {
     settings.qp = 18;
     settings.encoderType = EncoderType::Auto;
     settings.preset = EncoderPreset::Fast;
-    settings.rateControl = RateControlMode::CRF;
+    settings.rateControl = RateControlMode::VBR;
     settings.keyframeInterval = 2;
     settings.bFrames = 2;
     settings.audioEnabled = true;
