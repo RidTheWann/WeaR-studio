@@ -156,3 +156,22 @@ target_include_directories(SceneTransitionTest
 target_compile_features(SceneTransitionTest PRIVATE cxx_std_20)
 
 add_test(NAME SceneTransitionTest COMMAND SceneTransitionTest)
+
+    
+add_executable(VirtualCameraProtocolTest
+    VirtualCameraProtocolTest.cpp
+)
+
+target_link_libraries(VirtualCameraProtocolTest
+    PRIVATE
+        Qt6::Core
+)
+
+target_include_directories(VirtualCameraProtocolTest
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/core
+)
+
+target_compile_features(VirtualCameraProtocolTest PRIVATE cxx_std_20)
+
+add_test(NAME VirtualCameraProtocolTest COMMAND VirtualCameraProtocolTest)

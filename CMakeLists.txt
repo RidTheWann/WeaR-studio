@@ -148,6 +148,10 @@ add_subdirectory(core)
 add_subdirectory(ui)
 add_subdirectory(plugins)
 
+if(WIN32)
+    add_subdirectory(virtualcamera)
+endif()
+
 enable_testing()
 add_subdirectory(tests)
 
