@@ -8,6 +8,7 @@
 #include "RecordingManager.h"
 #include "AudioMixer.h"
 #include "RhiCompositor.h"
+#include "VirtualCameraManager.h"
 #include "SceneTransition.h"
 
 #include <QDebug>
