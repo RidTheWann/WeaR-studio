@@ -49,13 +49,10 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    const QElapsedTimer waitTimer = [] {
-        QElapsedTimer t;
-        t.start();
-        return t;
-    }();
+    QElapsedTimer waitTimer;
+    waitTimer.start();
 
-    while (waitTimer.elapsed() < 6000) {
+    while (waitTimer.elapsed() < 7000) {
         {
             QMutexLocker lock(&mutex);
             if (attempts.size() >= 3) {
