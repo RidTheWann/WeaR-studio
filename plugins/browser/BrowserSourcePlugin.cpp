@@ -11,6 +11,7 @@
 #include "include/cef_browser.h"
 #include "include/cef_client.h"
 #include "include/cef_render_handler.h"
+#include "include/cef_string.h"
 
 #include <QComboBox>
 #include <QDateTime>
@@ -180,7 +181,7 @@ public:
         if (!CefBrowserHost::CreateBrowser(
                 windowInfo,
                 m_client,
-                url.toStdString(),
+                CefString(url.toStdString()),
                 browserSettings,
                 nullptr,
                 nullptr)) {
