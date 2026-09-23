@@ -72,7 +72,10 @@ jobs:
             "Qt6Gui.dll",
             "Qt6Widgets.dll",
             "Qt6Network.dll",
-            "Qt6Multimedia.dll"
+            "Qt6Multimedia.dll",
+            "Qt6Quick.dll",
+            "Qt6OpenGL.dll",
+            "Qt6OpenGLWidgets.dll"
           )
 
           foreach ($file in $required) {
