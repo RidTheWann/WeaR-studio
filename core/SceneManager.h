@@ -6,6 +6,7 @@
 
 #include "Scene.h"
 #include "SceneItem.h"
+#include "SceneTransition.h"
 
 #include <QObject>
 #include <QMutex>
@@ -17,6 +18,7 @@
 #include <memory>
 #include <atomic>
 #include <functional>
+#include <array>
 
 namespace WeaR {
 
