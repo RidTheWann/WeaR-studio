@@ -11,6 +11,17 @@ namespace WeaR {
 
 namespace {
 
+QList<GlobalHotkeyBinding> defaultBindings() {
+    return {
+        {GlobalHotkeyAction::StartStream, QKeySequence(QStringLiteral("Ctrl+Alt+F5")), true},
+        {GlobalHotkeyAction::StopStream, QKeySequence(QStringLiteral("Ctrl+Alt+F6")), true},
+        {GlobalHotkeyAction::StartRecord, QKeySequence(QStringLiteral("Ctrl+Alt+Shift+F5")), true},
+        {GlobalHotkeyAction::StopRecord, QKeySequence(QStringLiteral("Ctrl+Alt+Shift+F6")), true},
+        {GlobalHotkeyAction::NextScene, QKeySequence(QStringLiteral("Ctrl+Alt+F7")), true},
+        {GlobalHotkeyAction::ToggleMicMute, QKeySequence(QStringLiteral("Ctrl+Alt+F8")), true}
+    };
+}
+
 #ifdef Q_OS_WIN
 int keyToNativeVirtualKey(Qt::Key key) {
     const int value = static_cast<int>(key);
@@ -71,16 +82,7 @@ GlobalHotkeyManager& GlobalHotkeyManager::instance() {
 
 GlobalHotkeyManager::GlobalHotkeyManager(QObject* parent)
     : QObject(parent) {
-    const QList<GlobalHotkeyBinding> defaults{
-        {GlobalHotkeyAction::StartStream, QKeySequence(QStringLiteral("Ctrl+Alt+F5")), true},
-        {GlobalHotkeyAction::StopStream, QKeySequence(QStringLiteral("Ctrl+Alt+F6")), true},
-        {GlobalHotkeyAction::StartRecord, QKeySequence(QStringLiteral("Ctrl+Alt+Shift+F5")), true},
-        {GlobalHotkeyAction::StopRecord, QKeySequence(QStringLiteral("Ctrl+Alt+Shift+F6")), true},
-        {GlobalHotkeyAction::NextScene, QKeySequence(QStringLiteral("Ctrl+Alt+F7")), true},
-        {GlobalHotkeyAction::ToggleMicMute, QKeySequence(QStringLiteral("Ctrl+Alt+F8")), true}
-    };
-
-    for (const auto& binding : defaults) {
+    for (const auto& binding : defaultBindings()) {
         m_bindings.insert(binding.action, binding);
     }
 }
@@ -137,6 +139,14 @@ bool GlobalHotkeyManager::setBindings(
 
     if (!m_initialized) {
         m_bindings = next;
+        QSettings settings;
+        settings.beginGroup(QStringLiteral("Hotkeys"));
+        for (const auto& binding : next) {
+            settings.setValue(
+                actionId(binding.action),
+                binding.sequence.toString(QKeySequence::PortableText));
+        }
+        settings.endGroup();
         return true;
     }
 
@@ -171,6 +181,17 @@ bool GlobalHotkeyManager::setBindings(
 #endif
 
     m_bindings = next;
+
+    QSettings settings;
+    settings.beginGroup(QStringLiteral("Hotkeys"));
+    settings.remove(QString());
+    for (const auto& binding : next) {
+        settings.setValue(
+            actionId(binding.action),
+            binding.sequence.toString(QKeySequence::PortableText));
+    }
+    settings.endGroup();
+
     m_lastError.clear();
     return true;
 }
