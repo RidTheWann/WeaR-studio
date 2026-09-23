@@ -1,7 +1,7 @@
 # WeaR Studio Architecture
 
 > **Version:** 0.1
-> **Last Updated:** December 2025
+> **Last Updated:** 2026-09-23
 > **Platform:** Windows 10/11 (64-bit)
 
 ---
@@ -180,13 +180,16 @@ SceneManager::instance().startRenderLoop();
 
 **File:** `core/EncoderManager.h/.cpp`
 
-**Purpose:** Hardware-accelerated video encoding using FFmpeg.
+**Purpose:** Hardware-accelerated video encoding plus AAC audio encoding using FFmpeg.
 
 **Key Features:**
 - NVENC primary, libx264 fallback
 - Async encoding thread with frame queue
 - CBR/VBR/CRF rate control
 - Low-latency streaming presets
+- Native FFmpeg AAC encoder with libswresample conversion to the encoder sample format
+- Interleaved float audio FIFO with sample-based audio PTS for stable long-running A/V timing
+- Separate `EncodedPacket::isAudio` packets routed through the same output callback
 
 ```cpp
 // Usage
@@ -211,6 +214,8 @@ encoder.start();
 - Automatic reconnection
 - Timestamp rescaling (`av_packet_rescale_ts`)
 - Service presets (Twitch, YouTube, etc.)
+- Separate FLV video/audio streams with independent time-base rescaling
+- Audio settings (`audioSampleRate`, `audioChannels`, `audioBitrate`) are applied to the AAC/FLV path
 
 ```cpp
 // Usage
@@ -554,30 +559,7 @@ cmake --build build --config Release --target my_awesome_source
 
 ### Top 3 Features for Next Development Phase
 
-#### 1. 🎵 Audio Mixer & Support
-
-**Priority:** Critical
-
-Currently WeaR Studio only handles video. Adding audio support requires:
-
-- **Audio Capture**: Use Windows WASAPI for desktop audio and microphone
-- **Audio Encoding**: FFmpeg AAC encoder
-- **Audio Mixer**: Qt-based mixer UI with volume sliders, mute buttons
-- **Audio Filters**: Noise suppression, compression, gain
-
-```cpp
-// Proposed interface addition to ISource
-AudioFrame captureAudioFrame() override;
-
-// New class
-class AudioMixer : public QObject {
-    void addTrack(IAudioSource* source);
-    void setVolume(int trackId, float volume);
-    AudioFrame mixTracks();
-};
-```
-
-#### 2. 🎨 GPU Shader Effects (Qt RHI)
+#### 1. 🎨 GPU Shader Effects (Qt RHI)
 
 **Priority:** High
 
@@ -597,7 +579,7 @@ class RhiRenderer {
 };
 ```
 
-#### 3. 📼 Recording Module
+#### 2. 📼 Recording Module
 
 **Priority:** High
 
@@ -640,3 +622,72 @@ For questions or contributions, please open an issue on the GitHub repository.
 ---
 
 *Documentation generated for WeaR Studio v0.1*
+
+
+---
+
+## Build & Audio Pipeline Audit — 2026-09-23
+
+This audit supersedes stale build logs and documents the current source tree only.
+
+### Clean-build requirements
+
+The supported Windows toolchain is:
+
+- Qt 6.10.1, MSVC 2022 x64
+- FFmpeg 6.0 or newer
+- CMake 3.21 or newer
+- Visual Studio 2022 generator / MSVC v143
+
+CI now deletes the build directory before configuration, configures from the repository root, builds **Debug and Release**, and runs the AudioMixer unit test in both configurations. Build logs are retained only as CI artifacts and are not committed.
+
+The historical `build_output.txt` file is not part of the current repository tree. The `.gitignore` also excludes build directories, CMake cache/output, and build log files.
+
+### Current audio data flow
+
+```
+WASAPI Desktop Loopback ─┐
+                         ├─> AudioMixer ─> SceneManager 60 Hz tick
+WASAPI Microphone ───────┘                    │
+                                              ▼
+                                      EncoderManager
+                                      AAC + swresample
+                                              │
+                                EncodedPacket(isAudio=true)
+                                              │
+                                              ▼
+                                      StreamManager
+                                      FLV / RTMP mux
+```
+
+The mixer produces 48 kHz stereo interleaved float frames sized to the render tick. The AAC encoder accumulates these frames until the codec frame size is available, assigns PTS in the audio sample time base, and emits audio packets separately from video packets. StreamManager rescales audio timestamps from the AAC sample time base to the FLV stream time base before interleaving.
+
+### Resource/lifetime invariants
+
+- WASAPI COM objects are owned by the capture worker thread and released before COM uninitialization.
+- Capture FIFO growth is bounded to approximately one second.
+- FFmpeg `AVFrame`, `AVPacket`, `SwrContext`, `SwsContext`, and codec contexts have explicit cleanup paths.
+- Stream packets are cloned before entering the asynchronous RTMP queue.
+- `AudioMixer` owns track metadata only; source lifetime remains with the source owner.
+
+### Validation status
+
+Source-level inspection confirms that the obsolete `WeaR::IPluginFactory` type is not referenced by the current `PluginManager.h` and that `ISource`, `IFilter`, and `IPlugin` use Qt `Q_DECLARE_INTERFACE` declarations.
+
+**CI/build status:** validated by the GitHub Actions workflow attached to the commit containing this audit.  
+**Manual RTMP smoke test:** must be performed on a Windows development machine with Qt/FFmpeg runtime dependencies and a reachable RTMP test server. The repository automation cannot truthfully claim a manual GUI interaction or five-minute external RTMP playback verification.
+
+Recommended smoke-test sequence:
+
+1. Launch `WeaR-Studio.exe`.
+2. Create a scene and add **Screen Capture**.
+3. Confirm the preview updates continuously.
+4. Confirm **Audio Mixer** shows Desktop Audio and Mic/Aux VU activity.
+5. Configure a local RTMP endpoint such as MediaMTX.
+6. Start streaming for at least five minutes.
+7. Monitor the output with ffplay/VLC and verify continuous video + audio with no drift.
+8. Stop streaming and confirm clean process shutdown.
+
+### Known implementation scope
+
+Audio capture currently targets the default Windows console render endpoint for desktop loopback and the default console capture endpoint for microphone input. Device-selection UI and advanced WASAPI format/event-mode configuration remain future work.

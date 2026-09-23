@@ -104,7 +104,11 @@ endif()
 # Qt 6.10 Configuration
 # ==============================================================================
 # Hint for Qt installation path
-set(CMAKE_PREFIX_PATH "C:/Qt/6.10.1/msvc2022_64" ${CMAKE_PREFIX_PATH})
+# Respect an explicit CMAKE_PREFIX_PATH from the caller/CI. Only provide the
+# documented local default when no Qt path was supplied.
+if(NOT CMAKE_PREFIX_PATH)
+    set(CMAKE_PREFIX_PATH "C:/Qt/6.10.1/msvc2022_64")
+endif()
 
 find_package(Qt6 6.10 REQUIRED COMPONENTS
     Core

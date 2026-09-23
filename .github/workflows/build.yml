@@ -1,48 +1,79 @@
-name: Build and Test
+name: Windows Build & Test
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, "feature/**" ]
   pull_request:
     branches: [ main, master ]
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-windows:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Install Qt
-      uses: jurplel/install-qt-action@v4
-      with:
-        version: '6.8.0'
-        host: 'windows'
-        target: 'desktop'
-        arch: 'win64_msvc2022_64'
-        modules: 'qtmultimedia'
+      - name: Install Qt 6.10.1
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.1"
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtmultimedia
 
-    - name: Setup FFmpeg
-      uses: FedericoCarboni/setup-ffmpeg@v3
-      with:
-        ffmpeg-version: '6.1.1'
-        linking: 'shared'
-      id: setup-ffmpeg
+      - name: Install FFmpeg development build
+        shell: pwsh
+        run: |
+          $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full-shared.7z"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.7z
+          7z x ffmpeg.7z -offmpeg-extract -y | Out-Null
+          $root = Get-ChildItem ffmpeg-extract -Directory | Select-Object -First 1
+          if (-not $root) { throw "FFmpeg archive root was not found" }
+          New-Item -ItemType Directory -Force "$env:GITHUB_WORKSPACE\ffmpeg" | Out-Null
+          Copy-Item "$($root.FullName)\*" "$env:GITHUB_WORKSPACE\ffmpeg" -Recurse -Force
+          "FFMPEG_ROOT=$env:GITHUB_WORKSPACE\ffmpeg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
+          "PATH=$env:GITHUB_WORKSPACE\ffmpeg\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-    - name: Configure CMake
-      run: >
-        cmake -B build -G "Visual Studio 17 2022" -A x64
-        -DCMAKE_PREFIX_PATH="${{ env.Qt6_DIR }}"
-        -DFFMPEG_ROOT="${{ steps.setup-ffmpeg.outputs.ffmpeg-path }}"
+      - name: Configure CMake
+        shell: pwsh
+        run: |
+          if (Test-Path build) { Remove-Item -Recurse -Force build }
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+            "-DCMAKE_PREFIX_PATH=$env:Qt6_DIR" `
+            "-DFFMPEG_ROOT=$env:FFMPEG_ROOT"
 
-    - name: Build Debug
-      run: cmake --build build --config Debug --parallel
+      - name: Build Debug
+        shell: pwsh
+        run: |
+          cmake --build build --config Debug --parallel 2>&1 | Tee-Object build-debug.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-    - name: Build Release
-      run: cmake --build build --config Release --parallel
+      - name: Build Release
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --parallel 2>&1 | Tee-Object build-release.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-    - name: Run Tests
-      run: |
-        cd build
-        ctest -C Release --output-on-failure
+      - name: Run Debug tests
+        shell: pwsh
+        run: ctest --test-dir build -C Debug --output-on-failure
+
+      - name: Run Release tests
+        shell: pwsh
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-logs
+          path: |
+            build-debug.log
+            build-release.log
+          if-no-files-found: ignore

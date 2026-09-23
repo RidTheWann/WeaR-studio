@@ -9,6 +9,8 @@
 #include <QSize>
 #include <QRect>
 #include <memory>
+#include <vector>
+#include <cstdint>
 
 // Forward declarations for hardware acceleration
 struct ID3D11Texture2D;

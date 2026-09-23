@@ -6,6 +6,7 @@
 
 #include <QMainWindow>
 #include <QTimer>
+#include <memory>
 
 class QListWidget;
 class QListWidgetItem;
