@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QKeySequence>
+#include <QMutex>
 #include <QAbstractNativeEventFilter>
 #include <QMap>
 #include <QString>
