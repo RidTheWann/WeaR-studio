@@ -265,8 +265,9 @@ void SettingsDialog::buildAdvancedTab() {
     m_recordWidth->setRange(160, 7680);
     m_recordHeight = new QSpinBox(recording);
     m_recordHeight->setRange(120, 4320);
-    m_recordFps = new QSpinBox(recording);
-    m_recordFps->setRange(1, 240);
+    m_recordFps = new QDoubleSpinBox(recording);
+    m_recordFps->setRange(1.0, 240.0);
+    m_recordFps->setDecimals(3);
     m_recordBitrate = new QSpinBox(recording);
     m_recordBitrate->setRange(100, 200000);
     m_recordMaxBitrate = new QSpinBox(recording);
@@ -381,7 +382,9 @@ void SettingsDialog::loadFromManagers() {
     m_recordFormat->setCurrentIndex(static_cast<int>(recording.format));
     m_recordWidth->setValue(recording.width);
     m_recordHeight->setValue(recording.height);
-    m_recordFps->setValue(recording.fpsNum / std::max(1, recording.fpsDen));
+    m_recordFps->setValue(
+        static_cast<double>(recording.fpsNum) /
+        static_cast<double>(std::max(1, recording.fpsDen)));
     m_recordBitrate->setValue(recording.videoBitrate);
     m_recordMaxBitrate->setValue(recording.maxVideoBitrate);
     m_recordBuffer->setValue(recording.bufferSize);
@@ -457,8 +460,8 @@ bool SettingsDialog::applyToManagers() {
     recording.format = static_cast<RecordingFormat>(m_recordFormat->currentData().toInt());
     recording.width = m_recordWidth->value();
     recording.height = m_recordHeight->value();
-    recording.fpsNum = m_recordFps->value();
-    recording.fpsDen = 1;
+    recording.fpsNum = qRound64(m_recordFps->value() * 1000.0);
+    recording.fpsDen = 1000;
     recording.videoBitrate = m_recordBitrate->value();
     recording.maxVideoBitrate = m_recordMaxBitrate->value();
     recording.bufferSize = m_recordBuffer->value();
