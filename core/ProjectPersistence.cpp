@@ -347,7 +347,6 @@ bool ProjectPersistence::profileFromJson(
         output.value("width").toInt(outputResolution.width()),
         output.value("height").toInt(outputResolution.height()));
     targetFps = output.value("fps").toDouble(targetFps);
-undefined
     if (!outputResolution.isValid() || targetFps <= 0.0) {
         if (error) *error = "Profile output resolution/FPS is invalid.";
         return false;
@@ -429,12 +428,9 @@ bool ProjectPersistence::saveProfile(
     const RecordingSettings& recording,
     const QSize& outputResolution,
     double targetFps,
-    bool encoderOutputEnabled,
-    bool recordingOutputEnabled,
     QString* error) {
     const QJsonDocument document(profileToJson(
-        stream, encoder, recording, outputResolution, targetFps,
-        encoderOutputEnabled, recordingOutputEnabled));
+        stream, encoder, recording, outputResolution, targetFps));
 
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -458,8 +454,6 @@ bool ProjectPersistence::loadProfile(
     RecordingSettings& recording,
     QSize& outputResolution,
     double& targetFps,
-    bool& encoderOutputEnabled,
-    bool& recordingOutputEnabled,
     QString* error) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
