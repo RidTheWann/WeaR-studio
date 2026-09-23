@@ -156,7 +156,19 @@ public:
             return false;
         }
 
-        m_settings = localSettings;
+        {
+            QMutexLocker lock(&m_stateMutex);
+            m_settings = localSettings;
+        }
+
+        // A previous worker may have finished due to a bounded-queue overflow.
+        // Reap it before starting another std::thread on the same object.
+        if (m_worker.joinable()) {
+            m_accepting.store(false);
+            m_queueCondition.wakeAll();
+            m_worker.join();
+            cleanupOutput();
+        }
 
         if (!initializeOutput()) {
             cleanupOutput();
@@ -565,16 +577,34 @@ private:
                 m_videoCodec->bit_rate = static_cast<int64_t>(m_settings.videoBitrate) * 1000;
                 m_videoCodec->rc_max_rate = static_cast<int64_t>(m_settings.videoBitrate) * 1000;
                 m_videoCodec->rc_buffer_size = static_cast<int64_t>(m_settings.bufferSize) * 1000;
+                if (nvenc) {
+                    av_opt_set(m_videoCodec->priv_data, "rc", "cbr", 0);
+                }
                 break;
             case RateControlMode::VBR:
                 m_videoCodec->bit_rate = static_cast<int64_t>(m_settings.videoBitrate) * 1000;
                 m_videoCodec->rc_max_rate = static_cast<int64_t>(m_settings.maxVideoBitrate) * 1000;
                 m_videoCodec->rc_buffer_size = static_cast<int64_t>(m_settings.bufferSize) * 1000;
+                if (nvenc) {
+                    av_opt_set(m_videoCodec->priv_data, "rc", "vbr", 0);
+                }
                 break;
             case RateControlMode::CRF:
-                av_opt_set_int(m_videoCodec->priv_data, "crf", m_settings.crf, 0);
+                if (nvenc) {
+                    // NVENC exposes quality control through constant-quality
+                    // (CQ) rather than x264's CRF option.
+                    av_opt_set(m_videoCodec->priv_data, "rc", "vbr", 0);
+                    av_opt_set_int(m_videoCodec->priv_data, "cq", m_settings.crf, 0);
+                    m_videoCodec->rc_max_rate =
+                        static_cast<int64_t>(m_settings.maxVideoBitrate) * 1000;
+                } else {
+                    av_opt_set_int(m_videoCodec->priv_data, "crf", m_settings.crf, 0);
+                }
                 break;
             case RateControlMode::CQP:
+                if (nvenc) {
+                    av_opt_set(m_videoCodec->priv_data, "rc", "constqp", 0);
+                }
                 av_opt_set_int(m_videoCodec->priv_data, "qp", m_settings.qp, 0);
                 break;
         }
