@@ -127,6 +127,16 @@ jobs:
             Write-Host "ffprobe OK: $file | video=$($videoCodec -join '') audio=$($audioCodec -join '')"
           }
 
+      - name: Upload RHI visual and benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rhi-compositing-verification
+          path: |
+            build/rhi-test-output/*
+            compositing-benchmark.log
+          if-no-files-found: ignore
+
       - name: Upload recording verification artifacts
         if: always()
         uses: actions/upload-artifact@v4
