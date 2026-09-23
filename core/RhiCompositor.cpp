@@ -187,7 +187,6 @@ public:
         }
 
         const QList<SceneItem*> items = scene.items();
-
         std::vector<SceneItem*> visibleItems;
         visibleItems.reserve(static_cast<std::size_t>(items.size()));
 
@@ -196,9 +195,8 @@ public:
                 continue;
             }
 
-            // Preserve exact legacy blend-mode semantics. Advanced blend modes
-            // remain on the QPainter path until equivalent RHI blend/shader
-            // implementations are introduced.
+            // Keep blend modes with exact legacy QPainter semantics on the
+            // safety path until equivalent RHI blend operators are implemented.
             if (item->blendMode() != BlendMode::Normal) {
                 m_lastError = QStringLiteral(
                     "RHI compositor uses QPainter fallback for non-normal blend mode.");
@@ -222,50 +220,38 @@ public:
             m_itemResources.push_back(ItemResources{});
         }
 
-        for (std::size_t i = 0; i < visibleItems.size(); ++i) {
-            if (!prepareItemResources(m_itemResources[i])) {
-                return false;
-            }
-        }
-
         for (std::size_t i = visibleItems.size(); i < m_itemResources.size(); ++i) {
             destroyItemResources(m_itemResources[i]);
         }
         m_itemResources.resize(visibleItems.size());
 
-        QRhiCommandBuffer* cb = nullptr;
-        const auto beginResult = m_rhi->beginOffscreenFrame(&cb);
-        if (beginResult != QRhi::FrameOpSuccess || !cb) {
-            m_lastError = QStringLiteral("QRhi beginOffscreenFrame() failed.");
-            return false;
-        }
+        std::vector<QImage> uploadImages(visibleItems.size());
+        std::vector<std::array<Vertex, 4>> vertices(visibleItems.size());
+        std::vector<RhiFilterUniforms> uniforms(visibleItems.size());
 
-        QRhiResourceUpdateBatch* updates = m_rhi->nextResourceUpdateBatch();
-        if (!updates) {
-            m_lastError = QStringLiteral("QRhi resource update batch allocation failed.");
-            return false;
-        }
-
+        // Prepare all CPU-side work before beginOffscreenFrame(). This keeps
+        // every failure path outside an in-flight QRhi frame.
         for (std::size_t i = 0; i < visibleItems.size(); ++i) {
             SceneItem* item = visibleItems[i];
             ItemResources& resources = m_itemResources[i];
 
             QImage frame = item->currentFrame();
             if (frame.isNull()) {
-                m_lastError = QStringLiteral("Scene item did not provide a software frame.");
+                m_lastError = QStringLiteral(
+                    "Scene item did not provide a software frame.");
                 return false;
             }
 
             IRhiFilter* gpuFilter = nullptr;
             IFilter* filter = item->filter();
 
-            if (filter) {
+            if (filter && filter->isActive()) {
                 gpuFilter = dynamic_cast<IRhiFilter*>(filter);
                 if (!filter->supportsGPU() || !filter->isGPUEnabled() || !gpuFilter) {
                     VideoFrame input;
                     input.softwareFrame = frame;
                     input.timestamp = 0;
-                    VideoFrame filtered = filter->processVideo(input);
+                    const VideoFrame filtered = filter->processVideo(input);
                     if (filtered.softwareFrame.isNull()) {
                         m_lastError = QStringLiteral(
                             "Filter could not produce a software frame for RHI upload.");
@@ -277,6 +263,14 @@ public:
             }
 
             const QImage uploadImage = frame.convertToFormat(QImage::Format_RGBA8888);
+            if (uploadImage.isNull()) {
+                m_lastError = QStringLiteral(
+                    "Failed to convert scene item frame to RGBA8.");
+                return false;
+            }
+
+            uploadImages[i] = uploadImage;
+
             if (resources.textureSize != uploadImage.size()) {
                 destroyRhiResource(resources.texture);
                 resources.texture = m_rhi->newTexture(
@@ -284,23 +278,25 @@ public:
                     uploadImage.size(),
                     1);
                 if (!resources.texture || !resources.texture->create()) {
-                    m_lastError = QStringLiteral("Failed to create an RHI source texture.");
+                    m_lastError = QStringLiteral(
+                        "Failed to create an RHI source texture.");
                     return false;
                 }
                 resources.textureSize = uploadImage.size();
-
                 destroyRhiResource(resources.srb);
             }
 
             if (!resources.srb) {
                 if (!resources.texture) {
-                    m_lastError = QStringLiteral("RHI source texture is unavailable.");
+                    m_lastError = QStringLiteral(
+                        "RHI source texture is unavailable.");
                     return false;
                 }
 
                 resources.srb = m_rhi->newShaderResourceBindings();
                 if (!resources.srb) {
-                    m_lastError = QStringLiteral("Failed to allocate RHI shader bindings.");
+                    m_lastError = QStringLiteral(
+                        "Failed to allocate RHI shader bindings.");
                     return false;
                 }
 
@@ -318,58 +314,88 @@ public:
                 });
 
                 if (!resources.srb->create()) {
-                    m_lastError = QStringLiteral("Failed to create RHI shader bindings.");
+                    m_lastError = QStringLiteral(
+                        "Failed to create RHI shader bindings.");
                     return false;
                 }
             }
 
-            updates->uploadTexture(resources.texture, uploadImage);
-
             const ItemTransform transform = item->transform();
             const auto corners = itemCorners(transform);
-            const std::array<Vertex, 4> vertices = {
+            vertices[i] = {
                 toVertex(corners[0], outputSize, 0.0f, 0.0f),
                 toVertex(corners[1], outputSize, 1.0f, 0.0f),
                 toVertex(corners[2], outputSize, 0.0f, 1.0f),
                 toVertex(corners[3], outputSize, 1.0f, 1.0f)
             };
-            updates->updateDynamicBuffer(
-                resources.vertexBuffer,
-                0,
-                static_cast<quint32>(sizeof(vertices)),
-                vertices.data());
 
-            RhiFilterUniforms uniforms{};
-            uniforms.filter3.setX(static_cast<float>(
+            uniforms[i] = {};
+            uniforms[i].filter3.setX(static_cast<float>(
                 std::clamp(transform.opacity, 0.0, 1.0)));
-            uniforms.filter3.setY(
+            uniforms[i].filter3.setY(
                 uploadImage.width() > 0
                     ? 1.0f / static_cast<float>(uploadImage.width())
                     : 0.0f);
-            uniforms.filter3.setZ(
+            uniforms[i].filter3.setZ(
                 uploadImage.height() > 0
                     ? 1.0f / static_cast<float>(uploadImage.height())
                     : 0.0f);
 
             if (gpuFilter) {
-                uniforms = gpuFilter->rhiUniforms();
-                uniforms.filter3.setX(static_cast<float>(
+                uniforms[i] = gpuFilter->rhiUniforms();
+                uniforms[i].filter3.setX(static_cast<float>(
                     std::clamp(transform.opacity, 0.0, 1.0)));
-                uniforms.filter3.setY(
+                uniforms[i].filter3.setY(
                     uploadImage.width() > 0
                         ? 1.0f / static_cast<float>(uploadImage.width())
                         : 0.0f);
-                uniforms.filter3.setZ(
+                uniforms[i].filter3.setZ(
                     uploadImage.height() > 0
                         ? 1.0f / static_cast<float>(uploadImage.height())
                         : 0.0f);
             }
+        }
 
+        QRhiResourceUpdateBatch* updates = m_rhi->nextResourceUpdateBatch();
+        QRhiResourceUpdateBatch* readbackBatch = m_rhi->nextResourceUpdateBatch();
+        if (!updates || !readbackBatch) {
+            if (updates) {
+                updates->release();
+            }
+            if (readbackBatch) {
+                readbackBatch->release();
+            }
+            m_lastError = QStringLiteral(
+                "QRhi resource update batch allocation failed.");
+            return false;
+        }
+
+        for (std::size_t i = 0; i < visibleItems.size(); ++i) {
+            ItemResources& resources = m_itemResources[i];
+            updates->uploadTexture(resources.texture, uploadImages[i]);
+            updates->updateDynamicBuffer(
+                resources.vertexBuffer,
+                0,
+                static_cast<quint32>(sizeof(vertices[i])),
+                vertices[i].data());
             updates->updateDynamicBuffer(
                 resources.uniformBuffer,
                 0,
                 static_cast<quint32>(sizeof(RhiFilterUniforms)),
-                &uniforms);
+                &uniforms[i]);
+        }
+
+        QRhiReadbackResult readback;
+        readbackBatch->readBackTexture(
+            QRhiReadbackDescription(m_outputTexture),
+            &readback);
+
+        QRhiCommandBuffer* cb = nullptr;
+        const auto beginResult = m_rhi->beginOffscreenFrame(&cb);
+        if (beginResult != QRhi::FrameOpSuccess || !cb) {
+            readbackBatch->release();
+            m_lastError = QStringLiteral("QRhi beginOffscreenFrame() failed.");
+            return false;
         }
 
         cb->beginPass(
@@ -397,33 +423,31 @@ public:
             cb->draw(4);
         }
 
-        QRhiReadbackResult readback;
-        QRhiResourceUpdateBatch* readbackBatch = m_rhi->nextResourceUpdateBatch();
-        if (!readbackBatch) {
-            m_lastError = QStringLiteral("QRhi readback batch allocation failed.");
-            return false;
-        }
-
-        readbackBatch->readBackTexture(
-            QRhiReadbackDescription(m_outputTexture),
-            &readback);
         cb->endPass(readbackBatch);
 
         const auto endResult = m_rhi->endOffscreenFrame();
         if (endResult != QRhi::FrameOpSuccess) {
-            m_lastError = QStringLiteral("QRhi endOffscreenFrame() failed.");
+            m_lastError = QStringLiteral(
+                "QRhi endOffscreenFrame() failed.");
+            if (m_rhi->isDeviceLost()) {
+                m_lastError = QStringLiteral(
+                    "Qt RHI reported a lost graphics device.");
+                reset();
+            }
             return false;
         }
 
         if (m_rhi->isDeviceLost()) {
-            m_lastError = QStringLiteral("Qt RHI reported a lost graphics device.");
+            m_lastError = QStringLiteral(
+                "Qt RHI reported a lost graphics device.");
             reset();
             return false;
         }
 
         if (readback.data.isEmpty() ||
             readback.pixelSize != outputSize) {
-            m_lastError = QStringLiteral("RHI texture readback returned no complete frame.");
+            m_lastError = QStringLiteral(
+                "RHI texture readback returned no complete frame.");
             return false;
         }
 
@@ -450,8 +474,8 @@ public:
 
         destroyRhiResource(m_pipeline);
         destroyRhiResource(m_sampler);
-        destroyRhiResource(m_renderPassDescriptor);
         destroyRhiResource(m_renderTarget);
+        destroyRhiResource(m_renderPassDescriptor);
         destroyRhiResource(m_outputTexture);
 
         if (m_rhi) {
