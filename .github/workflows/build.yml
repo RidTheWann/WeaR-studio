@@ -34,6 +34,7 @@ jobs:
           New-Item -ItemType Directory -Force "$env:GITHUB_WORKSPACE\ffmpeg" | Out-Null
           Copy-Item "$($root.FullName)\*" "$env:GITHUB_WORKSPACE\ffmpeg" -Recurse -Force
           "FFMPEG_ROOT=$env:GITHUB_WORKSPACE\ffmpeg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
+          "PATH=$env:GITHUB_WORKSPACE\ffmpeg\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Configure CMake
         shell: pwsh
