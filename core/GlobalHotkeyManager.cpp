@@ -129,6 +129,7 @@ bool GlobalHotkeyManager::setBindings(
     const QList<GlobalHotkeyBinding>& bindings) {
     QMutexLocker lock(&m_mutex);
 
+    const QMap<GlobalHotkeyAction, GlobalHotkeyBinding> oldBindings = m_bindings;
     QMap<GlobalHotkeyAction, GlobalHotkeyBinding> next;
     for (const auto& binding : bindings) {
         next.insert(binding.action, binding);
@@ -148,15 +149,29 @@ bool GlobalHotkeyManager::setBindings(
         }
 
         if (!registerBindingLocked(binding)) {
-            // Do not leave a partially registered configuration.
             unregisterAllLocked();
-            m_bindings = next;
+
+            m_lastError = QString();
+            for (const auto& oldBinding : oldBindings) {
+                if (!oldBinding.enabled || oldBinding.sequence.isEmpty()) {
+                    continue;
+                }
+                if (!registerBindingLocked(oldBinding)) {
+                    // If an old hotkey can no longer be registered, leave it
+                    // disabled rather than retaining a misleading in-memory
+                    // registration state.
+                    continue;
+                }
+            }
+
+            m_bindings = oldBindings;
             return false;
         }
     }
 #endif
 
     m_bindings = next;
+    m_lastError.clear();
     return true;
 }
 
