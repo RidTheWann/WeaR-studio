@@ -48,6 +48,15 @@ add_executable(RhiCompositorTest
     RhiCompositorTest.cpp
 )
 
+qt_add_shaders(RhiCompositorTest "wear_rhi_shaders"
+    PREFIX "/wear/rhi"
+    PRECOMPILE
+    OPTIMIZED
+    FILES
+        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.vert
+        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.frag
+)
+
 target_link_libraries(RhiCompositorTest
     PRIVATE
         core
@@ -67,6 +76,15 @@ add_test(NAME RhiCompositorTest COMMAND RhiCompositorTest)
 # backend is available on the host.
 add_executable(CompositingBenchmark
     CompositingBenchmark.cpp
+)
+
+qt_add_shaders(CompositingBenchmark "wear_rhi_shaders"
+    PREFIX "/wear/rhi"
+    PRECOMPILE
+    OPTIMIZED
+    FILES
+        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.vert
+        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.frag
 )
 
 target_link_libraries(CompositingBenchmark
@@ -92,6 +110,15 @@ set_tests_properties(CompositingBenchmark PROPERTIES LABELS "benchmark")
 # that is intentionally not migrated to the RHI shader yet.
 add_executable(SceneManagerFallbackTest
     SceneManagerFallbackTest.cpp
+)
+
+qt_add_shaders(SceneManagerFallbackTest "wear_rhi_shaders"
+    PREFIX "/wear/rhi"
+    PRECOMPILE
+    OPTIMIZED
+    FILES
+        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.vert
+        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.frag
 )
 
 target_link_libraries(SceneManagerFallbackTest
