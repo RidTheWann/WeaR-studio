@@ -108,14 +108,37 @@ jobs:
         shell: pwsh
         run: |
           choco install innosetup --no-progress -y
-          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 7\\ISCC.exe"
-          if (-not (Test-Path $iscc)) {
-            $iscc = Join-Path $env:ProgramFiles "Inno Setup 7\\ISCC.exe"
+
+          $candidates = @(
+            (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source,
+            "$env:ProgramFiles\\Inno Setup 7\\ISCC.exe",
+            "$env:ProgramFiles\\Inno Setup 6\\ISCC.exe",
+            "${env:ProgramFiles(x86)}\\Inno Setup 7\\ISCC.exe",
+            "${env:ProgramFiles(x86)}\\Inno Setup 6\\ISCC.exe"
+          ) | Where-Object {
+            $_ -and (Test-Path -LiteralPath $_)
           }
-          if (-not (Test-Path $iscc)) {
+
+          $iscc = $candidates | Select-Object -First 1
+
+          if (-not $iscc) {
+            $iscc = Get-ChildItem `
+              -Path "$env:ProgramFiles", "${env:ProgramFiles(x86)}" `
+              -Filter ISCC.exe `
+              -File `
+              -Recurse `
+              -ErrorAction SilentlyContinue |
+              Select-Object -First 1 -ExpandProperty FullName
+          }
+
+          if (-not $iscc) {
             throw "ISCC.exe was not found after installing Inno Setup."
           }
-          "ISCC_EXE=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
+
+          Write-Host "Using Inno Setup compiler: $iscc"
+          "ISCC_EXE=$iscc" | Out-File `
+            -FilePath $env:GITHUB_ENV `
+            -Encoding utf8
 
       - name: Build Windows installer
         shell: pwsh
