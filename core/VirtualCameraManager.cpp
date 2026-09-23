@@ -308,7 +308,7 @@ bool VirtualCameraManager::start() {
         MFVirtualCameraType_SoftwareCameraSource,
         MFVirtualCameraLifetime_Session,
         MFVirtualCameraAccess_CurrentUser,
-        L"WeaR Studio",
+        L"WeaR Studio Virtual Camera",
         kVirtualCameraClsid,
         nullptr,
         0,
@@ -327,11 +327,11 @@ bool VirtualCameraManager::start() {
         return false;
     }
 
-    m_vcam.reset(rawCamera);
+    m_vcam.Attach(rawCamera);
 
     const HRESULT startResult = m_vcam->Start(nullptr);
     if (FAILED(startResult)) {
-        m_vcam.reset();
+        m_vcam.Reset();
         m_impl->stopPipeServer();
         MFShutdown();
         if (uninitializeCom) {
@@ -364,7 +364,7 @@ void VirtualCameraManager::stop() {
     if (m_vcam) {
         // Session lifetime makes Remove the correct cleanup operation.
         m_vcam->Remove();
-        m_vcam.reset();
+        m_vcam.Reset();
     }
 
     if (m_impl) {
