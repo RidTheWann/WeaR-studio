@@ -162,14 +162,26 @@ jobs:
       - name: Clean-machine installer smoke test
         shell: pwsh
         run: |
-          $installer = Get-ChildItem "$env:GITHUB_WORKSPACE\\build\\installer" -Filter "*.exe" -File | Select-Object -First 1
+          $installer = Get-ChildItem `
+            "$env:GITHUB_WORKSPACE\\build\\installer" `
+            -Filter "*.exe" `
+            -File |
+            Select-Object -First 1
+
+          if (-not $installer) {
+            throw "Installer executable was not found."
+          }
 
           $installDir = "$env:GITHUB_WORKSPACE\\clean-machine-install"
           if (Test-Path $installDir) {
             Remove-Item -Recurse -Force $installDir
           }
 
-          & $installer.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/DIR=$installDir"
+          & $installer.FullName `
+            /VERYSILENT `
+            /SUPPRESSMSGBOXES `
+            /NORESTART `
+            "/DIR=$installDir"
 
           if ($LASTEXITCODE -ne 0) {
             throw "Silent installer failed with exit code $LASTEXITCODE"
@@ -180,11 +192,18 @@ jobs:
             throw "Installed executable was not found: $installedExe"
           }
 
-          $env:PATH = "$env:SystemRoot\\System32;$env:SystemRoot"
-          & $installedExe --smoke-test 2>&1 | Tee-Object installed-smoke-test.log
+          $env:PATH = "$installDir;$env:SystemRoot\\System32;$env:SystemRoot"
 
-          if ($LASTEXITCODE -ne 0) {
-            throw "Installed package smoke test failed with exit code $LASTEXITCODE"
+          $process = Start-Process `
+            -FilePath $installedExe `
+            -ArgumentList @("--smoke-test") `
+            -WorkingDirectory $installDir `
+            -Wait `
+            -PassThru `
+            -NoNewWindow
+
+          if ($process.ExitCode -ne 0) {
+            throw "Installed package smoke test failed with exit code $($process.ExitCode)"
           }
 
           Write-Host "Clean-machine installer smoke test passed."
