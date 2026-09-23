@@ -93,6 +93,29 @@ set_target_properties(WeaRStudio PROPERTIES
 # ==============================================================================
 # Deploy Qt Runtime DLLs (Windows)
 # ==============================================================================
+if(WEAR_ENABLE_CEF)
+    target_link_libraries(WeaRStudio PRIVATE libcef_dll_wrapper)
+    target_include_directories(WeaRStudio PRIVATE "${CEF_ROOT}")
+    add_dependencies(WeaRStudio libcef_dll_wrapper)
+
+    # Deploy the CEF binary payload beside the application executable.
+    set(WEAR_CEF_RUNTIME_DIR "${CEF_ROOT}/$<CONFIG>")
+    foreach(_cef_binary IN LISTS CEF_BINARY_FILES)
+        add_custom_command(TARGET WeaRStudio POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "${WEAR_CEF_RUNTIME_DIR}/${_cef_binary}"
+                    "$<TARGET_FILE_DIR:WeaRStudio>/${_cef_binary}"
+        )
+    endforeach()
+
+    add_custom_command(TARGET WeaRStudio POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory
+                "${CEF_RESOURCE_DIR}"
+                "$<TARGET_FILE_DIR:WeaRStudio>"
+        COMMENT "Deploying CEF runtime/resources..."
+    )
+endif()
+
 if(WIN32)
     get_target_property(_qmake_executable Qt6::qmake IMPORTED_LOCATION)
     get_filename_component(_qt_bin_dir "${_qmake_executable}" DIRECTORY)
