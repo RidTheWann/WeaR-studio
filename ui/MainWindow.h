@@ -14,6 +14,8 @@ class QLabel;
 class QLineEdit;
 class QPushButton;
 class QDockWidget;
+class QComboBox;
+class QSpinBox;
 
 namespace WeaR {
 
@@ -51,12 +53,16 @@ private slots:
     // Streaming controls
     void onStartStreaming();
     void onStopStreaming();
+    void onRecordClicked();
+    void onPauseRecordingClicked();
+    void onBrowseRecordingPath();
     void onSettingsClicked();
     
     // Updates
     void onPreviewFrame(const QImage& frame);
     void updateStatistics();
     void updateStreamState();
+    void updateRecordingState();
 
 private:
     void setupUI();
@@ -103,6 +109,13 @@ private:
     QLineEdit* m_streamKeyEdit = nullptr;
     QPushButton* m_startStreamBtn = nullptr;
     QPushButton* m_settingsBtn = nullptr;
+    QLineEdit* m_recordPathEdit = nullptr;
+    QPushButton* m_recordBrowseBtn = nullptr;
+    QComboBox* m_recordFormatCombo = nullptr;
+    QSpinBox* m_recordBitrateSpin = nullptr;
+    QPushButton* m_recordBtn = nullptr;
+    QPushButton* m_pauseRecordBtn = nullptr;
+    QLabel* m_recordDurationLabel = nullptr;
     
     // Status widgets
     QLabel* m_statusLabel = nullptr;
