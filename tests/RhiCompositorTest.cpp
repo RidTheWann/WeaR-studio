@@ -171,6 +171,9 @@ bool assertGaussianBlur(RhiCompositor& compositor, TestSource& source,
 
 bool assertColorCorrection(RhiCompositor& compositor, TestSource& source,
                            Scene& scene, const QString& dir) {
+    QImage neutral(scene.resolution(), QImage::Format_RGBA8888);
+    neutral.fill(qRgba(90, 90, 90, 255));
+    source.setFrame(neutral);
     auto* item = scene.itemAt(0);
     ColorCorrectionFilter filter;
     filter.initialize();
@@ -240,7 +243,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Replace the source with a hard edge image for blur validation.
+    // Replace the source image in-place for subsequent shader checks.
     QImage edgeImage(size, QImage::Format_RGBA8888);
     edgeImage.fill(qRgba(0, 0, 0, 255));
     for (int y = 0; y < size.height(); ++y) {
@@ -248,16 +251,14 @@ int main(int argc, char* argv[]) {
             edgeImage.setPixelColor(x, y, QColor(255, 255, 255, 255));
         }
     }
-    TestSource edgeSource(edgeImage);
-    edgeSource.start();
+    source.setFrame(edgeImage);
     item->setFilter(nullptr);
-    item->setSource(&edgeSource);
 
-    if (!assertGaussianBlur(compositor, edgeSource, scene, dir)) {
+    if (!assertGaussianBlur(compositor, source, scene, dir)) {
         return 1;
     }
 
-    if (!assertColorCorrection(compositor, edgeSource, scene, dir)) {
+    if (!assertColorCorrection(compositor, source, scene, dir)) {
         return 1;
     }
 
