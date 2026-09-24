@@ -242,7 +242,7 @@ jobs:
           WEAR_REQUIRE_RHI_TEST: "0"
         run: |
           New-Item -ItemType Directory -Force "$env:WEAR_RHI_TEST_OUTPUT_DIR" | Out-Null
-          ctest --test-dir build -C Debug --output-on-failure -LE benchmark
+          ctest --test-dir build -C Debug -V --output-on-failure -LE benchmark
 
       - name: Run Release tests
         shell: pwsh
@@ -251,7 +251,7 @@ jobs:
           WEAR_REQUIRE_RHI_TEST: "0"
         run: |
           New-Item -ItemType Directory -Force "$env:WEAR_RHI_TEST_OUTPUT_DIR" | Out-Null
-          ctest --test-dir build -C Release --output-on-failure -LE benchmark
+          ctest --test-dir build -C Release -V --output-on-failure -LE benchmark
 
       - name: Measure compositing CPU usage
         shell: pwsh
