@@ -434,7 +434,7 @@ private:
                 &m_formatContext->pb, 
                 url.toUtf8().constData(),
                 AVIO_FLAG_WRITE,
-                nullptr,
+                &m_formatContext->interrupt_callback,
                 &options
             );
             
@@ -581,8 +581,10 @@ private:
                         m_stats.reconnectAttempt = reconnectAttempts;
                     }
 
+                    // maxReconnectAttempts counts reconnect attempts, not
+                    // the initial connection attempt that failed.
                     if (m_settings.maxReconnectAttempts > 0 &&
-                        reconnectAttempts >= m_settings.maxReconnectAttempts) {
+                        reconnectAttempts > m_settings.maxReconnectAttempts) {
                         qCritical()
                             << "Max RTMP reconnection attempts reached:"
                             << reconnectAttempts;
@@ -635,7 +637,7 @@ private:
 
                 ++reconnectAttempts;
                 if (m_settings.maxReconnectAttempts > 0 &&
-                    reconnectAttempts >= m_settings.maxReconnectAttempts) {
+                    reconnectAttempts > m_settings.maxReconnectAttempts) {
                     qCritical()
                         << "Max RTMP reconnection attempts reached:"
                         << reconnectAttempts;
