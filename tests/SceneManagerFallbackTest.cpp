@@ -65,6 +65,7 @@ private:
 } // namespace
 
 int main(int argc, char* argv[]) {
+    qputenv("WEAR_COMPOSITOR", "qpainter");
     QGuiApplication app(argc, argv);
 
     SceneManager& manager = SceneManager::instance();
@@ -90,9 +91,16 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    const QRgb pixel = output.pixel(32, 18);
+    const QRgb pixel =
+        output.convertToFormat(QImage::Format_ARGB32).pixel(32, 18);
     if (qRed(pixel) < 150 || qGreen(pixel) > 80 || qBlue(pixel) > 80) {
-        std::cerr << "QPainter fallback blend result is incorrect" << std::endl;
+        std::cerr << "QPainter fallback blend result is incorrect: "
+                  << "RGB=("
+                  << qRed(pixel) << ","
+                  << qGreen(pixel) << ","
+                  << qBlue(pixel) << ","
+                  << qAlpha(pixel) << ")"
+                  << std::endl;
         return 1;
     }
 

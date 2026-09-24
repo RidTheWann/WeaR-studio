@@ -51,7 +51,8 @@ WeaR Studio is a professional, open-source streaming and recording application b
 - **Screen Capture** — Windows Graphics Capture API with zero-copy GPU frames
 - **Scene System** — Multiple scenes with layer-based composition
 - **Hardware Encoding** — NVENC (NVIDIA) with libx264 fallback
-- **RTMP Streaming** — Stream to Twitch, YouTube, Facebook, custom servers
+- **RTMP Streaming** — Stream to Twitch, YouTube, Facebook, custom servers with automatic exponential reconnect
+- **Application Diagnostics** — Persistent .log file plus Windows crash .dmp/.log artifacts
 - **Plugin System** — Dynamic plugin loading with Qt Plugin Loader
 - **Dark Theme UI** — Professional OBS-like interface with docking
 
@@ -76,7 +77,11 @@ WeaR Studio is a professional, open-source streaming and recording application b
 
 ### Download
 
-Download the latest release from the [Releases](https://github.com/RidTheWann/WeaR-studio/releases) page.
+Download the latest installer from the Releases page, or use the Windows installer artifact produced by CI.
+
+### Windows Installer
+
+The CI pipeline creates a self-contained Inno Setup installer. It stages the Release executable with windeployqt, bundles FFmpeg runtime DLLs, includes built plugins, and performs an installation smoke test with Qt/FFmpeg removed from PATH. The installed application therefore does not require a separate Qt or FFmpeg runtime installation.
 
 ### Manual Installation
 

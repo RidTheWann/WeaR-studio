@@ -4,6 +4,7 @@
 // ==============================================================================
 
 #include "WeaRApp.h"
+#include <AppDiagnostics.h>
 
 #include <QStyleFactory>
 #include <QFont>
@@ -19,6 +20,10 @@ WeaRApp::WeaRApp(int& argc, char** argv)
     setApplicationVersion(version());
     setOrganizationName(QStringLiteral("WeaR-studio"));
     setOrganizationDomain(QStringLiteral("wear-studio.com"));
+
+    // Start persistent diagnostics after metadata is set, so
+    // QStandardPaths resolves the per-user application directory correctly.
+    AppDiagnostics::initialize();
     
     // Setup the dark theme
     setupDarkTheme();
@@ -27,7 +32,9 @@ WeaRApp::WeaRApp(int& argc, char** argv)
     qDebug() << "WeaR Studio" << version() << "initialized";
 }
 
-WeaRApp::~WeaRApp() = default;
+WeaRApp::~WeaRApp() {
+    AppDiagnostics::shutdown();
+}
 
 void WeaRApp::setupDarkTheme() {
     // Use Fusion style for consistent cross-platform look

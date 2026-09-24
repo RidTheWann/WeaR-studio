@@ -40,7 +40,10 @@
 #include <QMessageBox>
 #include <QInputDialog>
 #include <QDebug>
+#include <AppDiagnostics.h>
 #include <QSignalBlocker>
+#include <QDesktopServices>
+#include <QUrl>
 
 namespace WeaR {
 
@@ -153,6 +156,13 @@ void MainWindow::setupMenuBar() {
     // Help menu
     QMenu* helpMenu = menuBar()->addMenu("&Help");
     
+    QAction* logFolderAction =
+        helpMenu->addAction("Open &Log Folder");
+    connect(logFolderAction, &QAction::triggered, this, []() {
+        QDesktopServices::openUrl(
+            QUrl::fromLocalFile(AppDiagnostics::logDirectory()));
+    });
+
     QAction* aboutAction = helpMenu->addAction("&About WeaR Studio");
     connect(aboutAction, &QAction::triggered, [this]() {
         QMessageBox::about(this, "About WeaR Studio",
@@ -1001,25 +1011,34 @@ void MainWindow::updateStatistics() {
     }
 
     // Stream stats
-    if (StreamManager::instance().isStreaming()) {
-        StreamStatistics streamStats = StreamManager::instance().statistics();
-        m_bitrateLabel->setText(QString("Bitrate: %1 kbps")
-                                .arg(streamStats.currentBitrateKbps, 0, 'f', 0));
-        
-        // Duration
-        int64_t ms = streamStats.streamDurationMs;
-        int seconds = (ms / 1000) % 60;
-        int minutes = (ms / 60000) % 60;
-        int hours = ms / 3600000;
-        m_durationLabel->setText(QString("Duration: %1:%2:%3")
-                                 .arg(hours, 2, 10, QChar('0'))
-                                 .arg(minutes, 2, 10, QChar('0'))
-                                 .arg(seconds, 2, 10, QChar('0')));
+    const StreamStatistics streamStats =
+        StreamManager::instance().statistics();
+
+    if (streamStats.state == StreamState::Streaming) {
+        m_bitrateLabel->setText(
+            QString("Bitrate: %1 kbps")
+                .arg(streamStats.currentBitrateKbps, 0, 'f', 0));
+
+        const int64_t ms = streamStats.streamDurationMs;
+        const int seconds = static_cast<int>((ms / 1000) % 60);
+        const int minutes = static_cast<int>((ms / 60000) % 60);
+        const int hours = static_cast<int>(ms / 3600000);
+        m_durationLabel->setText(
+            QString("Duration: %1:%2:%3")
+                .arg(hours, 2, 10, QChar('0'))
+                .arg(minutes, 2, 10, QChar('0'))
+                .arg(seconds, 2, 10, QChar('0')));
+    } else if (streamStats.state == StreamState::Reconnecting) {
+        m_bitrateLabel->setText(
+            QString("Reconnect %1/%2s")
+                .arg(streamStats.reconnectAttempt)
+                .arg(streamStats.reconnectDelayMs / 1000));
+        m_durationLabel->setText("Reconnecting...");
     } else {
         m_bitrateLabel->setText("Bitrate: --");
         m_durationLabel->setText("Duration: 00:00:00");
     }
-}
+} // End of MainWindow::updateStatistics()
 
 void MainWindow::updateStreamState() {
     StreamState state = StreamManager::instance().state();

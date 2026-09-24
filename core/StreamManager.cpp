@@ -8,6 +8,10 @@
 #include <QDebug>
 #include <QDateTime>
 #include <QElapsedTimer>
+#include <QThread>
+#include <algorithm>
+#include <atomic>
+#include <limits>
 
 // FFmpeg headers (C linkage)
 extern "C" {
@@ -20,6 +24,30 @@ extern "C" {
 
 #include <chrono>
 #include <deque>
+
+namespace {
+
+struct InterruptState {
+    const std::atomic<bool>* running = nullptr;
+    std::chrono::steady_clock::time_point deadline =
+        std::chrono::steady_clock::time_point::max();
+};
+
+int ffmpegInterruptCallback(void* opaque) {
+    const auto* state = static_cast<const InterruptState*>(opaque);
+
+    if (!state || !state->running) {
+        return 1;
+    }
+
+    if (!state->running->load(std::memory_order_relaxed)) {
+        return 1;
+    }
+
+    return std::chrono::steady_clock::now() >= state->deadline ? 1 : 0;
+}
+
+} // namespace
 
 namespace WeaR {
 
@@ -85,8 +113,9 @@ public:
     bool configure(const StreamSettings& settings) {
         QMutexLocker lock(&m_mutex);
         
-        if (m_state == StreamState::Streaming || 
-            m_state == StreamState::Connecting) {
+        if (m_state == StreamState::Streaming ||
+            m_state == StreamState::Connecting ||
+            m_state == StreamState::Reconnecting) {
             qWarning() << "Cannot configure while streaming";
             return false;
         }
@@ -167,9 +196,15 @@ public:
             return false;
         }
         
-        // Transition to connecting
+        // Transition to connecting.
         setState(StreamState::Connecting);
-        
+
+        {
+            QMutexLocker statsLock(&m_statsMutex);
+            m_stats.reconnectAttempt = 0;
+            m_stats.reconnectDelayMs = 0;
+        }
+
         // Start output thread
         m_running = true;
         m_outputThread = std::thread(&Impl::outputLoop, this);
@@ -190,8 +225,9 @@ public:
             m_running = false;
         }
         
-        // Wake up output thread
+        // Wake both packet waiters and reconnect backoff waiters.
         m_queueCondition.wakeAll();
+        m_reconnectCondition.wakeAll();
         
         // Wait for thread to finish
         if (m_outputThread.joinable()) {
@@ -308,7 +344,19 @@ private:
             logAvError("Failed to allocate output context", ret);
             return false;
         }
-        
+
+        // Make all blocking FFmpeg I/O interruptible when StreamManager stops.
+        m_interruptState.running = &m_running;
+        m_interruptState.deadline =
+            std::chrono::steady_clock::now() +
+            std::chrono::seconds(
+                std::max(1, m_settings.connectTimeout) + 1);
+
+        m_formatContext->interrupt_callback.callback =
+            &ffmpegInterruptCallback;
+        m_formatContext->interrupt_callback.opaque =
+            &m_interruptState;
+
         // Create video stream
         m_videoStream = avformat_new_stream(m_formatContext, nullptr);
         if (!m_videoStream) {
@@ -363,9 +411,15 @@ private:
         AVDictionary* options = nullptr;
         
         // Connection timeout
-        QString timeout = QString::number(m_settings.connectTimeout * 1000000);
-        av_dict_set(&options, "timeout", timeout.toUtf8().constData(), 0);
-        
+        const auto timeoutUs =
+            QString::number(
+                std::max(1, m_settings.connectTimeout) * 1000000);
+        av_dict_set(&options, "timeout", timeoutUs.toUtf8().constData(), 0);
+
+        // Bound generic FFmpeg read/write waits as well as the connect timeout.
+        av_dict_set(&options, "rw_timeout",
+                    timeoutUs.toUtf8().constData(), 0);
+
         // TCP buffer size
         QString bufSize = QString::number(m_settings.sendBufferSize);
         av_dict_set(&options, "buffer_size", bufSize.toUtf8().constData(), 0);
@@ -380,7 +434,7 @@ private:
                 &m_formatContext->pb, 
                 url.toUtf8().constData(),
                 AVIO_FLAG_WRITE,
-                nullptr,
+                &m_formatContext->interrupt_callback,
                 &options
             );
             
@@ -390,6 +444,12 @@ private:
                 logAvError("Failed to open output URL", ret);
                 return false;
             }
+
+            // The connection deadline only applies during initial network setup.
+            // Keep the interrupt callback active for cancellation through stop(),
+            // but do not let the connection deadline expire during normal streaming.
+            m_interruptState.deadline =
+                std::chrono::steady_clock::time_point::max();
         }
         
         // Write stream header
@@ -451,70 +511,148 @@ private:
         return true;
     }
     
+    int calculateReconnectDelayMs(int attempt) const {
+        const int baseSeconds = std::max(1, m_settings.reconnectDelay);
+        const int maxSeconds = std::max(baseSeconds, m_settings.reconnectMaxDelay);
+
+        qint64 delaySeconds = baseSeconds;
+        for (int i = 1; i < attempt && delaySeconds < maxSeconds; ++i) {
+            delaySeconds = std::min<qint64>(
+                maxSeconds,
+                delaySeconds * 2);
+        }
+
+        return static_cast<int>(std::min<qint64>(
+            delaySeconds * 1000LL,
+            std::numeric_limits<int>::max()));
+    }
+
+    bool waitForReconnectBackoff(int attempt) {
+        const int delayMs = calculateReconnectDelayMs(attempt);
+
+        {
+            QMutexLocker lock(&m_statsMutex);
+            m_stats.reconnectAttempt = attempt;
+            m_stats.reconnectDelayMs = delayMs;
+        }
+
+        qInfo() << "RTMP reconnect scheduled:"
+                << "attempt=" << attempt
+                << "delay_ms=" << delayMs;
+
+        emit m_parent->reconnecting(attempt);
+
+        QMutexLocker lock(&m_reconnectMutex);
+        if (!m_running) {
+            return false;
+        }
+
+        m_reconnectCondition.wait(&m_reconnectMutex, delayMs);
+        return m_running;
+    }
+
     void outputLoop() {
         qDebug() << "Stream output thread started";
-        
+
         int reconnectAttempts = 0;
-        
+
         while (m_running) {
-            // Try to connect if not connected
-            if (m_state == StreamState::Connecting || 
+            if (m_state == StreamState::Connecting ||
                 m_state == StreamState::Reconnecting) {
-                
+
                 if (initializeOutput()) {
                     setState(StreamState::Streaming);
                     emit m_parent->connected();
                     reconnectAttempts = 0;
+
+                    QMutexLocker statsLock(&m_statsMutex);
+                    m_stats.reconnectAttempt = 0;
+                    m_stats.reconnectDelayMs = 0;
                 } else {
-                    // Connection failed
-                    reconnectAttempts++;
-                    
+                    // initializeOutput can fail after partially allocating an
+                    // AVFormatContext, so always clean it before the next try.
+                    cleanup();
+
+                    ++reconnectAttempts;
+
+                    {
+                        QMutexLocker statsLock(&m_statsMutex);
+                        ++m_stats.reconnectCount;
+                        m_stats.reconnectAttempt = reconnectAttempts;
+                    }
+
+                    // maxReconnectAttempts counts reconnect attempts, not
+                    // the initial connection attempt that failed.
                     if (m_settings.maxReconnectAttempts > 0 &&
-                        reconnectAttempts >= m_settings.maxReconnectAttempts) {
-                        qCritical() << "Max reconnection attempts reached";
+                        reconnectAttempts > m_settings.maxReconnectAttempts) {
+                        qCritical()
+                            << "Max RTMP reconnection attempts reached:"
+                            << reconnectAttempts;
                         setState(StreamState::Error);
-                        emit m_parent->streamError("Max reconnection attempts reached");
+                        emit m_parent->streamError(
+                            "Max reconnection attempts reached");
                         break;
                     }
-                    
+
                     setState(StreamState::Reconnecting);
-                    emit m_parent->reconnecting(reconnectAttempts);
-                    
-                    // Wait before retrying
-                    QThread::sleep(m_settings.reconnectDelay);
+                    if (!waitForReconnectBackoff(reconnectAttempts)) {
+                        break;
+                    }
                     continue;
                 }
             }
-            
-            // Process packets
+
             QueuedPacket queuedPacket;
-            
+
             {
                 QMutexLocker lock(&m_queueMutex);
-                
+
                 if (m_packetQueue.empty()) {
                     m_queueCondition.wait(&m_queueMutex, 100);
                     continue;
                 }
-                
+
                 queuedPacket = std::move(m_packetQueue.front());
                 m_packetQueue.pop_front();
             }
-            
-            if (!queuedPacket.packet) continue;
-            
-            // Send packet
-            if (!sendPacket(queuedPacket.packet, queuedPacket.isKeyframe, queuedPacket.isAudio)) {
-                // Send failed - attempt reconnection
-                qWarning() << "Send failed, attempting reconnection...";
+
+            if (!queuedPacket.packet) {
+                continue;
+            }
+
+            if (!sendPacket(
+                    queuedPacket.packet,
+                    queuedPacket.isKeyframe,
+                    queuedPacket.isAudio)) {
+                qWarning() << "RTMP packet send failed; reconnecting.";
                 cleanup();
+                emit m_parent->disconnected(
+                    "RTMP connection lost; reconnecting.");
                 setState(StreamState::Reconnecting);
-                
-                QMutexLocker lock(&m_statsMutex);
-                m_stats.reconnectCount++;
+
+                {
+                    QMutexLocker statsLock(&m_statsMutex);
+                    ++m_stats.reconnectCount;
+                }
+
+                ++reconnectAttempts;
+                if (m_settings.maxReconnectAttempts > 0 &&
+                    reconnectAttempts > m_settings.maxReconnectAttempts) {
+                    qCritical()
+                        << "Max RTMP reconnection attempts reached:"
+                        << reconnectAttempts;
+                    setState(StreamState::Error);
+                    emit m_parent->streamError(
+                        "Max reconnection attempts reached");
+                    break;
+                }
+
+                if (!waitForReconnectBackoff(reconnectAttempts)) {
+                    break;
+                }
             }
         }
-        
+
         qDebug() << "Stream output thread stopped";
     }
     
@@ -604,12 +742,16 @@ private:
     mutable QMutex m_mutex;
     mutable QMutex m_queueMutex;
     mutable QMutex m_statsMutex;
+    mutable QMutex m_reconnectMutex;
     QWaitCondition m_queueCondition;
+    QWaitCondition m_reconnectCondition;
     
     // State
     std::atomic<StreamState> m_state{StreamState::Stopped};
     std::atomic<bool> m_running{false};
     std::thread m_outputThread;
+
+    InterruptState m_interruptState;
     
     // Settings
     StreamSettings m_settings;

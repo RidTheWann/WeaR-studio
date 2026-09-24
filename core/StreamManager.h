@@ -60,6 +60,7 @@ struct StreamSettings {
     int connectTimeout = 10;    ///< Connection timeout
     int reconnectDelay = 5;     ///< Delay between reconnection attempts
     int maxReconnectAttempts = 5; ///< Max reconnection attempts (0 = infinite)
+    int reconnectMaxDelay = 60; ///< Maximum exponential backoff delay in seconds
     
     // Buffer settings
     int sendBufferSize = 1024 * 1024;  ///< TCP send buffer (1MB)
@@ -120,6 +121,8 @@ struct StreamStatistics {
     double currentBitrateKbps = 0;  ///< Current bitrate
     double averageLatencyMs = 0;    ///< Average send latency
     int reconnectCount = 0;         ///< Number of reconnections
+    int reconnectAttempt = 0;       ///< Current consecutive reconnect attempt
+    int reconnectDelayMs = 0;        ///< Current exponential backoff delay
     StreamState state = StreamState::Stopped;
 };
 

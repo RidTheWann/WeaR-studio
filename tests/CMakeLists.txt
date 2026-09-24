@@ -43,19 +43,27 @@ target_compile_features(RecordingManagerTest PRIVATE cxx_std_20)
 add_test(NAME RecordingManagerTest COMMAND RecordingManagerTest)
 
 
+set(WEAR_RHI_SHADER_FILES
+    "${CMAKE_SOURCE_DIR}/shaders/rhi_composite.vert"
+    "${CMAKE_SOURCE_DIR}/shaders/rhi_composite.frag"
+)
+
+function(add_wear_rhi_shaders target)
+    qt_add_shaders(${target} "wear_rhi_shaders"
+        PREFIX "/wear/rhi"
+        BASE "${CMAKE_SOURCE_DIR}"
+        PRECOMPILE
+        FILES
+            ${WEAR_RHI_SHADER_FILES}
+    )
+endfunction()
+
 # GPU compositor integration/visual regression coverage.
 add_executable(RhiCompositorTest
     RhiCompositorTest.cpp
 )
 
-qt_add_shaders(RhiCompositorTest "wear_rhi_shaders"
-    PREFIX "/wear/rhi"
-    PRECOMPILE
-    OPTIMIZED
-    FILES
-        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.vert
-        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.frag
-)
+add_wear_rhi_shaders(RhiCompositorTest)
 
 target_link_libraries(RhiCompositorTest
     PRIVATE
@@ -78,14 +86,7 @@ add_executable(CompositingBenchmark
     CompositingBenchmark.cpp
 )
 
-qt_add_shaders(CompositingBenchmark "wear_rhi_shaders"
-    PREFIX "/wear/rhi"
-    PRECOMPILE
-    OPTIMIZED
-    FILES
-        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.vert
-        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.frag
-)
+add_wear_rhi_shaders(CompositingBenchmark)
 
 target_link_libraries(CompositingBenchmark
     PRIVATE
@@ -112,14 +113,7 @@ add_executable(SceneManagerFallbackTest
     SceneManagerFallbackTest.cpp
 )
 
-qt_add_shaders(SceneManagerFallbackTest "wear_rhi_shaders"
-    PREFIX "/wear/rhi"
-    PRECOMPILE
-    OPTIMIZED
-    FILES
-        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.vert
-        ${CMAKE_SOURCE_DIR}/shaders/rhi_composite.frag
-)
+add_wear_rhi_shaders(SceneManagerFallbackTest)
 
 target_link_libraries(SceneManagerFallbackTest
     PRIVATE
@@ -135,6 +129,10 @@ target_include_directories(SceneManagerFallbackTest
 target_compile_features(SceneManagerFallbackTest PRIVATE cxx_std_20)
 
 add_test(NAME SceneManagerFallbackTest COMMAND SceneManagerFallbackTest)
+
+set_tests_properties(SceneManagerFallbackTest PROPERTIES
+    ENVIRONMENT "WEAR_COMPOSITOR=qpainter"
+)
 
 
 # Scene transition rendering and SceneManager integration coverage.
@@ -156,3 +154,44 @@ target_include_directories(SceneTransitionTest
 target_compile_features(SceneTransitionTest PRIVATE cxx_std_20)
 
 add_test(NAME SceneTransitionTest COMMAND SceneTransitionTest)
+
+
+add_executable(StreamReconnectTest
+    StreamReconnectTest.cpp
+)
+
+target_link_libraries(StreamReconnectTest
+    PRIVATE
+        core
+        Qt6::Core
+)
+
+target_include_directories(StreamReconnectTest
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/core
+)
+
+target_compile_features(StreamReconnectTest PRIVATE cxx_std_20)
+
+add_test(NAME StreamReconnectTest COMMAND StreamReconnectTest)
+set_tests_properties(StreamReconnectTest PROPERTIES TIMEOUT 20)
+
+
+add_executable(AppDiagnosticsTest
+    AppDiagnosticsTest.cpp
+)
+
+target_link_libraries(AppDiagnosticsTest
+    PRIVATE
+        core
+        Qt6::Core
+)
+
+target_include_directories(AppDiagnosticsTest
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/core
+)
+
+target_compile_features(AppDiagnosticsTest PRIVATE cxx_std_20)
+
+add_test(NAME AppDiagnosticsTest COMMAND AppDiagnosticsTest)
