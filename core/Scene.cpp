@@ -220,18 +220,23 @@ void Scene::sendToBack(SceneItem* item) {
 }
 
 QImage Scene::render() const {
-    // Create output image with premultiplied alpha for better composition
+    // Use a deterministic premultiplied render target for raster composition.
     QImage output(m_resolution, QImage::Format_ARGB32_Premultiplied);
-    output.fill(m_backgroundColor);
-    
+    output.fill(Qt::transparent);
+
     QPainter painter(&output);
-    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::Antialiasing, false);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
-    
+    painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+
+    // Paint the scene background first so blend modes always operate on an
+    // initialized, opaque destination.
+    painter.fillRect(output.rect(), m_backgroundColor);
+
     render(&painter);
-    
+
     painter.end();
-    
+
     return output;
 }
 
